@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.3.3"
+APP_VERSION = "2.3.5"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -1170,14 +1170,17 @@ class UsageWidget:
         w, h = self._compute_layout_size()
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         x, y = self.root.winfo_x(), self.root.winfo_y()
+        # 与悬停展开同一位置规则：沿把手中心恢复为面板
+        cx = x + self.root.winfo_width() // 2
+        cy = y + self.root.winfo_height() // 2
         if side == "left":
-            x, y = 0, min(max(0, y), max(0, sh - h))
+            x, y = 0, min(max(0, cy - h // 2), max(0, sh - h))
         elif side == "right":
-            x, y = sw - w, min(max(0, y), max(0, sh - h))
+            x, y = sw - w, min(max(0, cy - h // 2), max(0, sh - h))
         elif side == "top":
-            x, y = min(max(0, x), max(0, sw - w)), 0
+            x, y = min(max(0, cx - w // 2), max(0, sw - w)), 0
         elif side == "bottom":
-            x, y = min(max(0, x), max(0, sw - w)), sh - h
+            x, y = min(max(0, cx - w // 2), max(0, sw - w)), sh - h
         self.dock_state = "none"
         self._placed = True
         self.root.geometry("%dx%d+%d+%d" % (w, h, x, y))
@@ -1196,20 +1199,43 @@ class UsageWidget:
             frm = (self.root.winfo_x(), self.root.winfo_y())
         x, y = frm
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        hw, hl = self._handle_size()
+        # 只沿贴边方向直线滑出（另一坐标不动），滑到屏幕外后再对齐到
+        # 把手原位（面板中心处）重绘；全程直线，无斜向漂移
         if side == "left":
             tx, ty = -w + 1, y
+            hy = min(max(0, y + h // 2 - hl // 2), max(0, sh - hl))
         elif side == "right":
             tx, ty = sw - 1, y
+            hy = min(max(0, y + h // 2 - hl // 2), max(0, sh - hl))
         elif side == "top":
             tx, ty = x, -h + 1
+            hx = min(max(0, x + w // 2 - hw // 2), max(0, sw - hw))
         else:
             tx, ty = x, sh - 1
+            hx = min(max(0, x + w // 2 - hw // 2), max(0, sw - hw))
 
         def done():
             self._animating = False
             self.dock_state = "docked"
+            # 窗口已在屏幕外（仅剩 1px 透明边），先把把手方向坐标调到原位
+            # （发生在屏幕外看不见），再重绘成把手
+            if side == "left":
+                self._handle_home = (0, hy)
+                self.root.geometry("+%d+%d" % (-w + 1, hy))
+            elif side == "right":
+                self._handle_home = (sw - hw, hy)
+                self.root.geometry("+%d+%d" % (sw - 1, hy))
+            elif side == "top":
+                self._handle_home = (hx, 0)
+                self.root.geometry("+%d+%d" % (hx, -h + 1))
+            else:
+                self._handle_home = (hx, sh - hl)
+                self.root.geometry("+%d+%d" % (hx, sh - 1))
+            self.root.update_idletasks()
             self._apply_theme()
             self.redraw()          # 重绘为把手（含微型进度条）
+            self.root.update_idletasks()
             self._save_window_pos()
 
         self._animate_move(tx, ty, done, frm=frm)
@@ -1223,17 +1249,21 @@ class UsageWidget:
         w, h = self._compute_layout_size()   # 详情面板尺寸
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         x, y = self.root.winfo_x(), self.root.winfo_y()
+        # 面板沿把手中心展开（左右贴边垂直居中、上下贴边水平居中），
+        # 指针始终落在展开后的面板内，不会触发误收回
+        cx = x + self.root.winfo_width() // 2
+        cy = y + self.root.winfo_height() // 2
         if side == "left":
-            y = min(max(0, y), max(0, sh - h))
+            y = min(max(0, cy - h // 2), max(0, sh - h))
             off, on = (-w + 1, y), (0, y)
         elif side == "right":
-            y = min(max(0, y), max(0, sh - h))
+            y = min(max(0, cy - h // 2), max(0, sh - h))
             off, on = (sw - 1, y), (sw - w, y)
         elif side == "top":
-            x = min(max(0, x), max(0, sw - w))
+            x = min(max(0, cx - w // 2), max(0, sw - w))
             off, on = (x, -h + 1), (x, 0)
         else:
-            x = min(max(0, x), max(0, sw - w))
+            x = min(max(0, cx - w // 2), max(0, sw - w))
             off, on = (x, sh - 1), (x, sh - h)
         self._animating = True
         # 先在屏幕外恢复成详情面板尺寸与内容，再滑入（切换发生在屏幕外，无闪烁）
@@ -1253,7 +1283,7 @@ class UsageWidget:
             self.refresh_async()
 
     def _collapse_to_dock(self):
-        """贴边展开状态下鼠标离开后，延时收回边缘。"""
+        """贴边展开状态下鼠标离开后，直线滑回收起。"""
         self._collapse_timer = None
         self._cancel_detail_tick()
         if self._animating or self.dock_state != "expanded":
@@ -1267,23 +1297,42 @@ class UsageWidget:
         w, h = self.cur_w, self.cur_h
         x, y = self.root.winfo_x(), self.root.winfo_y()
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        hw, hl = self._handle_size()
+        # 把手原位：优先用展开时记下的位置（展开被屏幕夹取时也能原位收回），
+        # 没有记录再按面板中心推算
+        home = getattr(self, "_handle_home", None)
+        if home is None:
+            home = (x + w // 2 - hw // 2, y + h // 2 - hl // 2)
+        # 只沿贴边方向直线滑出（另一坐标不动），与展开动画对称；
+        # 对齐到把手原位的一步放在屏幕外做，看不见
         if side == "left":
-            off = (-w + 1, y)
+            slide = (-w + 1, y)
+            hy = min(max(0, home[1]), max(0, sh - hl))
         elif side == "right":
-            off = (sw - 1, y)
+            slide = (sw - 1, y)
+            hy = min(max(0, home[1]), max(0, sh - hl))
         elif side == "top":
-            off = (x, -h + 1)
+            slide = (x, -h + 1)
+            hx = min(max(0, home[0]), max(0, sw - hw))
         else:
-            off = (x, sh - 1)
+            slide = (x, sh - 1)
+            hx = min(max(0, home[0]), max(0, sw - hw))
         self._animating = True
 
         def done():
             self._animating = False
             self.dock_state = "docked"
+            # 窗口已在屏幕外（仅剩 1px 透明边），先把把手方向坐标调回原位，
+            # 再重绘成把手 —— 收回全程直线滑出，不再斜向漂移
+            if side in ("left", "right"):
+                self.root.geometry("+%d+%d" % (slide[0], hy))
+            else:
+                self.root.geometry("+%d+%d" % (hx, slide[1]))
+            self.root.update_idletasks()
             self._apply_theme()
             self.redraw()
 
-        self._animate_move(off[0], off[1], done)
+        self._animate_move(slide[0], slide[1], done)
 
     def _on_widget_enter(self, event):
         self._suppress_collapse = False
@@ -1294,9 +1343,43 @@ class UsageWidget:
                 self._snap_to_expanded()   # 开关已关（手改配置等）：恢复普通窗口
             return
 
+    def _pointer_in_window(self, px, py, tol=2):
+        """指针坐标是否仍在窗口范围内（含贴屏幕边缘时的 ±tol 容差）。"""
+        wx, wy = self.root.winfo_x(), self.root.winfo_y()
+        ww, wh = self.root.winfo_width(), self.root.winfo_height()
+        return (wx - tol <= px <= wx + ww + tol - 1 and
+                wy - tol <= py <= wy + wh + tol - 1)
+
+    def _recheck_pointer(self):
+        """Leave 误报后的兜底轮询：指针真离开了就收回，防卡在展开态。"""
+        self._collapse_timer = None
+        if self.dock_state != "expanded" or self._animating:
+            return
+        try:
+            px, py = self.root.winfo_pointerx(), self.root.winfo_pointery()
+            inside = self._pointer_in_window(px, py)
+        except Exception:
+            inside = False
+        if inside or self._suppress_collapse:
+            # 仍贴在窗口上（或菜单打开期间）：继续盯
+            self._collapse_timer = self.root.after(300, self._recheck_pointer)
+        else:
+            self._collapse_to_dock()
+
     def _on_widget_leave(self, event):
         if self.dock_state == "expanded" and not self._animating:
             if self.cfg.get("edge_dock", True):
+                # 面板边线与屏幕边缘重合时，指针顶到屏幕最边缘会被系统
+                # 判成出界而误报 Leave；按指针实际位置复核
+                try:
+                    px, py = self.root.winfo_pointerx(), self.root.winfo_pointery()
+                    if self._pointer_in_window(px, py):
+                        self._cancel_collapse_timer()
+                        self._collapse_timer = self.root.after(
+                            300, self._recheck_pointer)
+                        return
+                except Exception:
+                    pass
                 self._cancel_collapse_timer()
                 self._collapse_to_dock()   # 鼠标移开立即收回，不做延时
             else:
@@ -1748,6 +1831,17 @@ class UsageWidget:
 
     # ---------------- 贴边把手：微型进度条 ----------------
 
+    def _handle_size(self):
+        """贴边把手的 (宽, 高)，_redraw_handle 与入坞/收回定位共用。"""
+        k = self.k
+        side = self.dock_side
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        t = max(7, int(12 * k))      # 露出厚度
+        grip = int(70 * k)           # 把手长度：固定短条，不随面板高度走
+        if side in ("left", "right"):
+            return t, max(t * 4, min(grip, sh - 4))
+        return max(t * 4, min(grip, sw - 4)), t
+
     def _redraw_handle(self):
         """贴边收起状态：边缘只留一条短把手，内嵌各供应商微型进度条。"""
         c = self.canvas
@@ -1755,12 +1849,7 @@ class UsageWidget:
         k = self.k
         side = self.dock_side
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        t = max(7, int(12 * k))      # 露出厚度
-        grip = int(70 * k)           # 把手长度：固定短条，不随面板高度走
-        if side in ("left", "right"):
-            hw, hl = t, max(t * 4, min(grip, sh - 4))
-        else:
-            hw, hl = max(t * 4, min(grip, sw - 4)), t
+        hw, hl = self._handle_size()
 
         # 胶囊形背景
         self._round_rect(0, 0, hw, hl, min(hw, hl) / 2.0,
