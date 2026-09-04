@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.3.2"
+APP_VERSION = "2.3.3"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -562,7 +562,9 @@ def fetch_volcano(vcfg):
 
     res = body.get("Result") or {}
     result["level"] = str(res.get("PlanType") or "")
-    for key, name in (("AFPFiveHour", "5小时"), ("AFPDaily", "今日"),
+    # 官方套餐只有 5 小时 / 周 / 月 三档限额；API 返回的 AFPDaily（今日，
+    # 固定 10000）比周限额还大，永远不会成为有效约束，不展示
+    for key, name in (("AFPFiveHour", "5小时"),
                       ("AFPWeekly", "本周"), ("AFPMonthly", "本月")):
         w = res.get(key)
         if isinstance(w, dict) and w.get("Quota"):
@@ -974,7 +976,7 @@ class UsageWidget:
         c.bind("<Button-3>", self._on_right_click)   # Windows 右键
         c.bind("<Button-2>", self._on_right_click)   # macOS 右键
         c.bind("<Enter>", self._on_widget_enter)     # 悬停：贴边展开 / 圆环详情
-        c.bind("<Leave>", self._on_widget_leave)     # 离开：延时收回
+        c.bind("<Leave>", self._on_widget_leave)     # 离开：立即收回
 
     # ---------------- 拖动 / 菜单 ----------------
 
@@ -1296,7 +1298,7 @@ class UsageWidget:
         if self.dock_state == "expanded" and not self._animating:
             if self.cfg.get("edge_dock", True):
                 self._cancel_collapse_timer()
-                self._collapse_timer = self.root.after(800, self._collapse_to_dock)
+                self._collapse_to_dock()   # 鼠标移开立即收回，不做延时
             else:
                 self._snap_to_expanded()   # 开关已关：直接恢复普通窗口
 
