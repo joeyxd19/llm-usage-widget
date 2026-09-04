@@ -1719,7 +1719,7 @@ class UsageWidget:
         side = self.dock_side
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         t = max(7, int(12 * k))      # 露出厚度
-        grip = int(120 * k)          # 把手长度：固定短条，不随面板高度走
+        grip = int(70 * k)           # 把手长度：固定短条，不随面板高度走
         if side in ("left", "right"):
             hw, hl = t, max(t * 4, min(grip, sh - 4))
         else:
