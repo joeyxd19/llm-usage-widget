@@ -1,0 +1,16 @@
+# 二进制与构建产物不入库（用 版本备份/ 文件夹保存各版 EXE）
+*.exe
+build/
+dist/
+__pycache__/
+*.pyc
+
+# 含密钥的配置不入库
+config.json
+
+# 版本快照文件夹（含 EXE 副本）
+版本备份/v*/
+
+# 系统杂项
+Thumbs.db
+desktop.ini
