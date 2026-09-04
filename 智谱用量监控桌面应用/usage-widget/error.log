@@ -82,3 +82,23 @@ Traceback (most recent call last):
     cfg = uw.load_config("d:\\APP\\大模型桌面额度显示\\额度悬浮窗\\config.json")
           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: load_config() takes 0 positional arguments but 1 was given
+
+[2026-09-05 00:06:56]
+Traceback (most recent call last):
+  File "c:\Users\18012\.trae-cn\work\6a9aa7d93d946a6dd89e466e\dock_smoke.py", line 11, in <module>
+    spec.loader.exec_module(uw)
+  File "<frozen importlib._bootstrap_external>", line 883, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "d:\APP\大模型桌面额度显示\智谱用量监控桌面应用\usage-widget\usage_widget.pyw", line 598, in <module>
+    class SettingsDialog(tk.Toplevel):
+AttributeError: 'NoneType' object has no attribute 'Toplevel'
+
+[2026-09-05 00:07:11]
+Traceback (most recent call last):
+  File "c:\Users\18012\.trae-cn\work\6a9aa7d93d946a6dd89e466e\dock_smoke.py", line 11, in <module>
+    spec.loader.exec_module(uw)
+  File "<frozen importlib._bootstrap_external>", line 883, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "d:\APP\大模型桌面额度显示\智谱用量监控桌面应用\usage-widget\usage_widget.pyw", line 598, in <module>
+    class SettingsDialog(tk.Toplevel):
+AttributeError: 'NoneType' object has no attribute 'Toplevel'

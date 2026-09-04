@@ -1,6 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.3 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.3.2 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.3.2 更新：
+- 修复火山引擎"网络错误"：误把整段 "AK + Secret Access Key:xxx" 粘进
+  AK 栏时，请求头带换行导致请求发不出去；现在自动拆分出 AK/Secret
+- 密钥读取统一 strip 清洗；请求头格式错误与真网络错误分开提示
+- 网络加固：本机代理客户端虚拟网卡会导致 DNS/路由间歇抖动（实测偶发
+  getaddrinfo 失败、单连接卡 15~35 秒）；超时 15s → 20s，直连+系统代理
+  两条路全部在网络层失败时停 2 秒自动完整重试一轮
+
+v2.3.1 更新：
+- 贴边把手缩短：120k → 70k（200% 缩放下约 140 像素的短条）
 
 v2.3 更新：
 - 移除卡片式/圆环式两种形态与右键「显示形态」菜单：主窗口直接显示完整详情面板，
@@ -36,6 +47,7 @@ import hmac
 import json
 import os
 import sys
+import time
 import threading
 import traceback
 import urllib.error
@@ -56,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.1"
+APP_VERSION = "2.3.2"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -340,6 +352,8 @@ def _http_json_once(opener, url, headers, data, timeout):
     except urllib.error.HTTPError as e:
         raw = e.read().decode("utf-8", "replace")
         code = e.code
+    except ValueError as e:   # 请求头/参数格式问题（如密钥误粘贴带换行）
+        return 0, "请求格式错误: %s" % e
     except Exception as e:
         return 0, "网络错误: %s" % e
     try:
@@ -348,19 +362,26 @@ def _http_json_once(opener, url, headers, data, timeout):
         return code, raw
 
 
-def http_json(url, headers=None, data=None, timeout=15):
+def http_json(url, headers=None, data=None, timeout=20):
     """
     发起请求，返回 (status_code, dict|str)。
     策略：先直连（国内接口直连最稳，不受本地代理软件状态影响），
-    直连在网络层失败时自动回退系统代理再试一次。
+    直连在网络层失败时自动回退系统代理再试一次；两条路都在网络层
+    失败（多为 DNS/路由间歇抖动）时，停 2 秒再完整重试一轮。
     拿到任何 HTTP 响应（含 401/503）即返回，不做无谓重试。
     """
-    result = (0, "未知错误")
-    for opener in (urllib.request.build_opener(urllib.request.ProxyHandler({})),
-                   urllib.request.build_opener()):
-        result = _http_json_once(opener, url, headers, data, timeout)
-        if result[0] != 0:
-            return result
+    def _round():
+        result = (0, "未知错误")
+        for opener in (urllib.request.build_opener(urllib.request.ProxyHandler({})),
+                       urllib.request.build_opener()):
+            result = _http_json_once(opener, url, headers, data, timeout)
+            if result[0] != 0:
+                return result
+        return result
+    result = _round()
+    if result[0] == 0:      # 网络层全败：歇 2 秒，把 DNS 抖动窗口错过去
+        time.sleep(2)
+        result = _round()
     return result
 
 
@@ -381,7 +402,7 @@ def fetch_zhipu(zcfg):
     """
     result = {"ok": False, "level": "", "five_hour": None,
               "weekly": None, "mcp": None, "windows": [], "error": ""}
-    key = zcfg.get("api_key", "")
+    key = (zcfg.get("api_key") or "").strip()
     if is_placeholder(key):
         result["error"] = "未配置 API Key"
         return result
@@ -461,8 +482,14 @@ def fetch_volcano(vcfg):
     POST https://ark.<region>.volcengineapi.com/?Action=GetAFPUsage&Version=2024-01-01
     """
     result = {"ok": False, "level": "", "windows": [], "error": ""}
-    ak = vcfg.get("access_key_id", "")
-    sk = vcfg.get("secret_access_key", "")
+    ak = (vcfg.get("access_key_id") or "").strip()
+    sk = (vcfg.get("secret_access_key") or "").strip()
+    # 兼容误粘贴：整段 "AK\nSecret Access Key:xxx" 粘进了 AK 栏，自动拆分
+    if "Secret Access Key" in ak:
+        head, _, tail = ak.partition("\n")
+        if not sk:
+            sk = tail.split(":", 1)[-1].strip()
+        ak = head.strip()
     if is_placeholder(ak) or is_placeholder(sk):
         result["error"] = "未配置 AK/SK"
         return result
@@ -521,8 +548,16 @@ def fetch_volcano(vcfg):
     meta = body.get("ResponseMetadata") or {}
     if meta.get("Error"):
         err = meta["Error"]
-        result["error"] = "%s: %s" % (err.get("Code", "Error"),
-                                      (err.get("Message") or "")[:80])
+        code_s = str(err.get("Code") or "Error")
+        hints = {
+            "AccessDenied": "AK/SK 没有方舟查询权限：请在火山引擎控制台为该子用户添加 ArkFullAccess（或 ark:GetAFPUsage 只读）授权",
+            "SignatureDoesNotMatch": "Secret Access Key 不正确",
+            "InvalidCredential": "AK/SK 无效或已被禁用",
+        }
+        if code_s in hints:
+            result["error"] = hints[code_s]
+        else:
+            result["error"] = "%s: %s" % (code_s, (err.get("Message") or "")[:80])
         return result
 
     res = body.get("Result") or {}
