@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.1 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.3 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.3 更新：
+- 移除卡片式/圆环式两种形态与右键「显示形态」菜单：主窗口直接显示完整详情面板，
+  贴边悬停展开的也是同一个面板，逻辑更简单直接
+- 验证并确认 5 小时/本周窗口映射正确（5 小时窗口每 5 小时整清零一次）
+- 版本管理：源码目录 git 仓库 + 版本备份文件夹（每版含 EXE，可整体回退）
+
+v2.2 更新：
+- 详情面板：各窗口额度百分比、重置倒计时与绝对时间、MCP 分模型用量、
+  套餐等级、更新时间；数据超过 2 分钟未刷新时展开自动拉取；
+  面板停留期间每 30 秒刷新倒计时
 
 v2.1 更新：
-- 新增圆环形态：双环进度（外环 5 小时 / 内环本周），体积更小，悬停显示详情
-  （右键菜单 / 设置窗口均可切换 卡片式 ↔ 圆环式）
-- 新增贴边自动收起：拖到屏幕边缘松手即滑入收起，边缘只留一个进度小条
-  （两条微型进度条持续显示用量，不扒开也能一眼看到），鼠标移上去自动弹出
-- 贴边悬停展开为完整详情面板：各窗口额度、重置倒计时与绝对时间、
-  MCP 分模型用量、套餐等级、更新时间等全面信息；数据超过 2 分钟未刷新
-  展开时自动拉取，停留期间每 30 秒刷新倒计时
-- 新增配色主题：深色 / 浅色 / 自动（感应窗口背后的背景明暗自动切换，
-  解决白色背景下深色悬浮窗看不清的问题）
+- 贴边自动收起：拖到屏幕边缘松手即滑入收起，边缘只留一个进度小条
+  （两条微型进度条持续显示用量），鼠标移上去自动展开详情面板
+- 配色主题：深色 / 浅色 / 自动（感应窗口背后的背景明暗自动切换）
 
 v2.0 更新：
 - 修复高分屏/系统缩放下文字模糊发虚的问题（DPI 感知渲染）
@@ -29,7 +34,6 @@ import datetime
 import hashlib
 import hmac
 import json
-import math
 import os
 import sys
 import threading
@@ -78,7 +82,6 @@ DEFAULT_CONFIG = {
     "critical_percent": 95,
     "window_x": 120,
     "window_y": 120,
-    "widget_mode": "card",     # card 卡片式 | ring 圆环式
     "theme": "auto",           # auto 自动跟随背景 | dark 深色 | light 浅色
     "edge_dock": True,         # 贴边自动收起
     "dock_side": "none",       # none/left/right/top/bottom（上次收起的边）
@@ -133,7 +136,7 @@ def load_config():
             cfg[section].update(user[section])
     for key in ("refresh_minutes", "opacity", "ui_scale", "warn_percent",
                 "critical_percent", "window_x", "window_y",
-                "widget_mode", "theme", "edge_dock", "dock_side"):
+                "theme", "edge_dock", "dock_side"):
         if key in user:
             cfg[key] = user[key]
     return cfg
@@ -643,16 +646,6 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(page_d, text="自动模式会感应窗口背后的背景明暗",
                   foreground="#666").pack(anchor="w", padx=(98, 0))
 
-        row = ttk.Frame(page_d); row.pack(fill="x", pady=4)
-        ttk.Label(row, text="显示形态", width=14, anchor="w").pack(side="left")
-        self.mode_var = tk.StringVar(
-            value="圆环式" if str(cfg.get("widget_mode", "card")) == "ring" else "卡片式")
-        cb_mode = ttk.Combobox(row, textvariable=self.mode_var, state="readonly",
-                               values=["卡片式", "圆环式"], width=16)
-        cb_mode.pack(side="left")
-        ttk.Label(page_d, text="圆环式更小巧，鼠标悬停可看详情",
-                  foreground="#666").pack(anchor="w", padx=(98, 0))
-
         row = ttk.Frame(page_d); row.pack(fill="x", pady=(9, 0))
         ttk.Label(row, text="贴边收起", width=14, anchor="w").pack(side="left")
         self.edge_dock = tk.BooleanVar(value=bool(cfg.get("edge_dock", True)))
@@ -779,7 +772,6 @@ class SettingsDialog(tk.Toplevel):
                 "secret_access_key": self.v_sk.get().strip(),
                 "region": self.v_region.get().strip() or "cn-beijing",
             },
-            "widget_mode": "ring" if self.mode_var.get() == "圆环式" else "card",
             "theme": {v: k for k, v in THEME_LABELS.items()}.get(
                 self.theme_choice.get(), "auto"),
             "edge_dock": bool(self.edge_dock.get()),
@@ -819,9 +811,6 @@ class UsageWidget:
         self._anim_job = None
         self._collapse_timer = None
         self._suppress_collapse = False
-        # ---- 圆环模式 tooltip ----
-        self._tip_timer = None
-        self._tip_window = None
         # ---- 详情面板倒计时刷新 ----
         self._detail_tick_job = None
         # ---- 配色主题 ----
@@ -838,9 +827,7 @@ class UsageWidget:
 
         self._metrics()
         self._pick_font()
-        # 菜单单选项（右键菜单显示形态 / 贴边开关 / 配色主题）
-        self.mode_var = tk.StringVar(
-            value="ring" if str(self.cfg.get("widget_mode", "card")) == "ring" else "card")
+        # 菜单单选项（右键菜单贴边开关 / 配色主题）
         self.dock_var = tk.BooleanVar(value=bool(self.cfg.get("edge_dock", True)))
         self.theme_var = tk.StringVar(value=str(self.cfg.get("theme", "auto") or "auto"))
         self._build_window()
@@ -863,14 +850,7 @@ class UsageWidget:
         self.uscale = us
         self.k = us * self.dpi / 96.0          # 总像素缩放因子
         k = self.k
-        self.W = int(216 * k)
-        self.pad = int(9 * k)
-        self.row_h = max(15, int(22 * k))
         self.bar_h = max(4, int(5 * self.k))
-        self.title_h = int(26 * k)
-        self.card_gap = int(5 * k)
-        self.label_w = int(40 * k)
-        self.pct_w = int(44 * k)
         self.radius = max(7, int(10 * k))
         # 字号（point；dpi 部分由 tk scaling 处理，这里只乘用户缩放）
         self.fs_title = max(7, int(round(9 * us)))
@@ -908,7 +888,7 @@ class UsageWidget:
             self.transparent = False
 
         self.canvas = tk.Canvas(self.root, bg=C_BG, highlightthickness=0,
-                                bd=0, width=self.W, height=100)
+                                bd=0, width=120, height=80)
         self.canvas.pack(fill="both", expand=True)
         self.root.resizable(False, False)
 
@@ -918,8 +898,6 @@ class UsageWidget:
         except Exception:
             pass
         # 菜单变量与最新配置同步
-        self.mode_var.set(
-            "ring" if str(self.cfg.get("widget_mode", "card")) == "ring" else "card")
         self.dock_var.set(bool(self.cfg.get("edge_dock", True)))
         self.theme_var.set(str(self.cfg.get("theme", "auto") or "auto"))
         self.menu = tk.Menu(self.root, tearoff=0,
@@ -927,14 +905,6 @@ class UsageWidget:
         self.menu.add_command(label="立即刷新", command=self.refresh_async)
         self.menu.add_command(label="设置…", command=self.open_settings)
         self.menu.add_separator()
-        mode_menu = tk.Menu(self.menu, tearoff=0, font=(self.font_family, 9))
-        mode_menu.add_radiobutton(label="卡片式", value="card",
-                                  variable=self.mode_var,
-                                  command=lambda: self._set_mode("card"))
-        mode_menu.add_radiobutton(label="圆环式（更小）", value="ring",
-                                  variable=self.mode_var,
-                                  command=lambda: self._set_mode("ring"))
-        self.menu.add_cascade(label="显示形态", menu=mode_menu)
         theme_menu = tk.Menu(self.menu, tearoff=0, font=(self.font_family, 9))
         for value, label in (("auto", "自动（跟随背景）"),
                              ("dark", "深色"), ("light", "浅色")):
@@ -952,16 +922,6 @@ class UsageWidget:
         self.menu.add_cascade(label="开机自启", menu=self.auto_menu)
         self.menu.add_separator()
         self.menu.add_command(label="退出", command=self.quit)
-
-    def _set_mode(self, mode):
-        """切换显示形态（卡片 / 圆环），立即生效并保存。"""
-        if str(self.cfg.get("widget_mode", "card")) == mode:
-            return
-        self.cfg["widget_mode"] = mode
-        save_config_patch({"widget_mode": mode})
-        self.mode_var.set(mode)
-        self._placed = True
-        self.redraw()
 
     def _toggle_edge_dock(self):
         """开/关贴边自动收起。关闭时若正处于收起状态则恢复普通窗口。"""
@@ -985,7 +945,6 @@ class UsageWidget:
 
     def _on_drag_start(self, event):
         self._cancel_collapse_timer()
-        self._cancel_tip()
         self._cancel_detail_tick()
         # 从贴边收起/展开状态开始拖动：先瞬间恢复成正常窗口（贴边展开位）
         snap_pos = None
@@ -1044,7 +1003,6 @@ class UsageWidget:
                 self.redraw()
 
     def _on_right_click(self, event):
-        self._cancel_tip()
         self._cancel_collapse_timer()
         # 右键菜单打开期间不要自动收回（指针移到菜单上会触发 Leave）
         self._suppress_collapse = True
@@ -1192,7 +1150,6 @@ class UsageWidget:
     def _dock_to(self, side, frm=None):
         """滑入收起到指定边，之后由把手持续显示微型进度条。"""
         self._cancel_collapse_timer()
-        self._cancel_tip()
         self.dock_side = side
         self._animating = True
         save_config_patch({"dock_side": side})
@@ -1226,7 +1183,7 @@ class UsageWidget:
             return
         self._cancel_collapse_timer()
         side = self.dock_side
-        w, h = self._compute_layout_size(detail=True)   # 详情面板尺寸
+        w, h = self._compute_layout_size()   # 详情面板尺寸
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         x, y = self.root.winfo_x(), self.root.winfo_y()
         if side == "left":
@@ -1299,13 +1256,8 @@ class UsageWidget:
             else:
                 self._snap_to_expanded()   # 开关已关（手改配置等）：恢复普通窗口
             return
-        # 圆环模式：悬停显示详情
-        if (str(self.cfg.get("widget_mode", "card")) == "ring"
-                and self.dock_state in ("none", "expanded")):
-            self._schedule_tip()
 
     def _on_widget_leave(self, event):
-        self._cancel_tip()
         if self.dock_state == "expanded" and not self._animating:
             if self.cfg.get("edge_dock", True):
                 self._cancel_collapse_timer()
@@ -1320,7 +1272,8 @@ class UsageWidget:
         try:
             sw = self.root.winfo_screenwidth()
             sh = self.root.winfo_screenheight()
-            if x > sw - 60 or y > sh - 60 or x < 40 - self.W or y < 0:
+            w = int(300 * self.k)   # 详情面板宽度
+            if x > sw - 60 or y > sh - 60 or x < 40 - w or y < 0:
                 return 120, 120
         except Exception:
             pass
@@ -1402,7 +1355,6 @@ class UsageWidget:
             self._toast("当前没有开机自启")
 
     def quit(self):
-        self._cancel_tip()
         self._cancel_collapse_timer()
         self._cancel_detail_tick()
         if self._anim_job is not None:
@@ -1504,86 +1456,6 @@ class UsageWidget:
                x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
         return cv.create_polygon(pts, smooth=True, **kw)
 
-    def _card(self, y0, height):
-        r = self.radius
-        m = int(4 * self.k)
-        self._round_rect(self.pad - m, y0, self.W - self.pad + m, y0 + height, r,
-                         fill=self.t["card"], outline=self.t["line"])
-        return y0
-
-    def _bar(self, y_center, percent, color):
-        x0 = self.pad + self.label_w + int(3 * self.k)
-        x1 = self.W - self.pad - self.pct_w - int(3 * self.k)
-        r = self.bar_h // 2
-        # 圆角底槽
-        self._round_rect(x0, y_center - r, x1, y_center + r, r,
-                         fill=self.t["track"], outline=self.t["track"])
-        if percent is None:
-            return
-        try:
-            pct = max(0.0, min(100.0, float(percent)))
-        except Exception:
-            return
-        w = (x1 - x0) * pct / 100.0
-        if w <= 0.5:
-            return
-        if w < self.bar_h:  # 过短时画直角小块，避免圆角变形
-            self.canvas.create_rectangle(x0, y_center - r, x0 + w, y_center + r,
-                                         fill=color, width=0)
-        else:
-            self._round_rect(x0, y_center - r, x0 + w, y_center + r, r,
-                             fill=color, outline=color)
-
-    def _row(self, y, label, percent, right_text=None):
-        cy = y + self.row_h // 2
-        self.canvas.create_text(self.pad + 2, cy, text=label, anchor="w",
-                                font=self.f_text, fill=self.t["dim"])
-        color = self._color(percent)
-        self._bar(cy, percent, color)
-        txt = right_text if right_text is not None else (
-            "—" if percent is None else "%d%%" % round(float(percent or 0)))
-        self.canvas.create_text(self.W - self.pad, cy, text=txt, anchor="e",
-                                font=self.f_text, fill=color)
-
-    def _title_status(self):
-        """卡片标题右侧的轻量状态：更新时间 / 更新中 / 提示。"""
-        s = getattr(self, "status_text", "")
-        if self.last_ok_time and ("更新于" in s or not s):
-            return self.last_ok_time.strftime("%H:%M")
-        return s.replace("更新于 ", "")
-
-    def _provider_title(self, y, name, level, accent, err, status=""):
-        cy = y + self.title_h // 2
-        # 品牌色圆点
-        dot_r = max(2, int(2.5 * self.k))
-        dx = self.pad + 1
-        self.canvas.create_oval(dx, cy - dot_r, dx + 2 * dot_r, cy + dot_r,
-                                fill=accent, width=0)
-        tx = dx + 2 * dot_r + int(5 * self.k)
-        self.canvas.create_text(tx, cy, text=name, anchor="w",
-                                font=self.f_title, fill=self.t["text"])
-        if level:
-            tag_x = tx + self.f_title.measure(name) + int(6 * self.k)
-            self.canvas.create_rectangle(
-                tag_x, cy - int(8 * self.k),
-                tag_x + self.f_small.measure(level) + int(10 * self.k),
-                cy + int(8 * self.k),
-                fill=self._tag_bg(accent), width=0)
-            self.canvas.create_text(tag_x + int(5 * self.k), cy,
-                                    text=level, anchor="w", font=self.f_small,
-                                    fill=self.t["text"])
-        # 右侧：本卡错误 > 全局状态（更新时间等）
-        right = ("⚠ " + err[:10]) if err else status[:12]
-        if right:
-            is_err = right.startswith("⚠")
-            self.canvas.create_text(self.W - self.pad, cy, text=right,
-                                    anchor="e", font=self.f_small,
-                                    fill=self.t["warn"] if is_err else self.t["dim"])
-        # 标题下分隔线
-        line_y = y + self.title_h
-        self.canvas.create_line(self.pad + 2, line_y, self.W - self.pad - 2, line_y,
-                                fill=self.t["line"], width=1)
-
     def _tag_bg(self, accent):
         if accent == C_ACCENT_Z:
             return self.t["tag_z"]
@@ -1591,21 +1463,12 @@ class UsageWidget:
             return self.t["tag_v"]
         return self.t["track"]
 
-    def _hint_center(self, y0, height, text):
-        self.canvas.create_text(self.W // 2, y0 + height // 2,
-                                text=text[:20] if text else "—",
-                                font=self.f_small, fill=self.t["dim"])
-
     def redraw(self):
-        """总入口：按贴边/显示形态状态分发。"""
+        """总入口：贴边收起时画把手，其余状态都是完整详情面板。"""
         if self.dock_state == "docked":
             self._redraw_handle()
-        elif self.dock_state in ("expanding", "expanded"):
-            self._redraw_detail()      # 贴边悬停展开 → 完整详情面板
-        elif str(self.cfg.get("widget_mode", "card")) == "ring":
-            self._redraw_ring()
         else:
-            self._redraw_card()
+            self._redraw_detail()
 
     # ---------------- 数据聚合（把手 / 圆环共用） ----------------
 
@@ -1631,27 +1494,9 @@ class UsageWidget:
                 groups.append(("火山", C_ACCENT_V, []))
         return groups
 
-    def _compute_layout_size(self, detail=False):
-        """按当前形态与数据计算正常（展开）状态窗口尺寸，不绘制。
-        detail=True 计算贴边悬停展开的详情面板尺寸。"""
-        if detail:
-            return self._detail_layout()[:2]
-        if str(self.cfg.get("widget_mode", "card")) == "ring":
-            w, h = self._ring_layout()[:2]
-            return w, h
-        k = self.k
-        show_z = self.cfg.get("zhipu", {}).get("enabled", True)
-        show_v = self.cfg.get("volcano", {}).get("enabled", True)
-        total = 0
-        if show_z:
-            total += self.title_h + 2 * self.row_h + int(8 * k) + self.card_gap
-        if show_v:
-            windows = (self.data.get("volcano") or {}).get("windows") or []
-            rows = max(1, len(windows))
-            total += self.title_h + rows * self.row_h + int(8 * k) + self.card_gap
-        if not show_z and not show_v:
-            total = self.title_h + 2 * self.row_h + int(8 * k) + self.card_gap
-        return self.W, total - self.card_gap + int(2 * k)
+    def _compute_layout_size(self):
+        """计算详情面板（正常/贴边展开状态）窗口尺寸，不绘制。"""
+        return self._detail_layout()[:2]
 
     # ---------------- 详情面板（贴边悬停展开） ----------------
 
@@ -1735,10 +1580,10 @@ class UsageWidget:
         return w, h, blocks, pad
 
     def _redraw_detail(self):
-        """贴边悬停展开的完整详情面板：各窗口额度、重置时间、用量明细。"""
+        """完整详情面板（主窗口 / 贴边悬停展开共用）：
+        各窗口额度、重置时间、用量明细。"""
         c = self.canvas
         c.delete("all")
-        self._cancel_tip()
         w, h, blocks, pad = self._detail_layout()
         k = self.k
         self.cur_w, self.cur_h = w, h
@@ -1836,8 +1681,14 @@ class UsageWidget:
                               anchor="w", font=self.f_small, fill=self.t["dim"])
 
         c.configure(width=w, height=h)
-        # 只改尺寸不动位置（展开位由动画管理）
-        self.root.geometry("%dx%d" % (w, h))
+        geo = "%dx%d" % (w, h)
+        if not self._placed:
+            x, y0 = self._clamp_start_pos()
+            geo += "+%d+%d" % (x, y0)
+            self._placed = True
+        # 首次按配置定位，之后只调尺寸不重置位置（避免拖动后被刷新弹回；
+        # 贴边展开/收回时位置由动画管理，同样只传尺寸）
+        self.root.geometry(geo)
 
     def _start_detail_tick(self):
         """详情面板停留期间每 30 秒刷新倒计时文字。"""
@@ -1864,7 +1715,6 @@ class UsageWidget:
         """贴边收起状态：边缘只留一条窄把手，内嵌各供应商微型进度条。"""
         c = self.canvas
         c.delete("all")
-        self._cancel_tip()
         k = self.k
         side = self.dock_side
         w, h = self._compute_layout_size()
@@ -1954,241 +1804,6 @@ class UsageWidget:
             x, y = min(max(0, x), max(0, sw - hw)), sh - hl
         c.configure(width=hw, height=hl)
         self.root.geometry("%dx%d+%d+%d" % (hw, hl, x, y))
-
-    # ---------------- 圆环形态 ----------------
-
-    def _ring_layout(self):
-        """返回 (w, h, groups, ring_d, pad, gap)。"""
-        groups = self._progress_groups()
-        n = max(1, len(groups))
-        k = self.k
-        ring_d = int(64 * k)
-        gap = int(10 * k)
-        pad = int(7 * k)
-        w = pad * 2 + n * ring_d + (n - 1) * gap
-        h = pad * 2 + ring_d
-        return w, h, groups, ring_d, pad, gap
-
-    def _redraw_ring(self):
-        """圆环形态：每个供应商一组双环（外环 5 小时 / 内环 本周）。
-        供应商名放在环中心（大百分比下方小字），不再放底部标签。"""
-        c = self.canvas
-        c.delete("all")
-        self._cancel_tip()
-        w, h, groups, ring_d, pad, gap = self._ring_layout()
-        self.cur_w, self.cur_h = w, h
-        k = self.k
-        self._round_rect(2, 2, w - 2, h - 2, self.radius,
-                         fill=self.t["card"], outline=self.t["line"])
-        f_big = tkfont.Font(family=self.font_family,
-                            size=max(9, int(round(12 * self.uscale))))
-        for i, (name, _accent, bars) in enumerate(groups):
-            cx = pad + ring_d / 2.0 + i * (ring_d + gap)
-            cy = pad + ring_d / 2.0
-            slots = list(bars[:2])
-            while len(slots) < 2:
-                slots.append(None)
-            radii = [ring_d / 2.0, ring_d / 2.0 - 8 * k]
-            bws = [max(3, int(5 * k)), max(3, int(4 * k))]
-            for j in range(2):
-                r, bw = radii[j], bws[j]
-                # 完整圆底槽
-                c.create_oval(cx - r, cy - r, cx + r, cy + r,
-                              outline=self.t["track"], width=bw)
-                item = slots[j]
-                if item and item[1] is not None:
-                    try:
-                        pct = max(0.0, min(100.0, float(item[1])))
-                    except Exception:
-                        continue
-                    color = self._color(pct)
-                    if pct > 0:
-                        bbox = (cx - r, cy - r, cx + r, cy + r)
-                        c.create_arc(bbox, start=90, extent=-3.6 * pct,
-                                     style="arc", width=bw, outline=color)
-                        # 圆头端帽：起点(12点) + 进度终点
-                        cap = bw / 2.0
-                        c.create_oval(cx - cap, cy - r - cap,
-                                      cx + cap, cy - r + cap,
-                                      fill=color, width=0)
-                        ang = math.radians(90.0 - 3.6 * pct)
-                        ex = cx + r * math.cos(ang)
-                        ey = cy - r * math.sin(ang)
-                        c.create_oval(ex - cap, ey - cap,
-                                      ex + cap, ey + cap,
-                                      fill=color, width=0)
-            # 环中心：大百分比 + 下方供应商名小字
-            main = bars[0][1] if bars else None
-            if main is None:
-                c.create_text(cx, cy - int(7 * k), text="!",
-                              font=f_big, fill=self.t["warn"])
-            else:
-                c.create_text(cx, cy - int(7 * k),
-                              text="%d%%" % round(float(main)),
-                              font=f_big, fill=self._color(main))
-            c.create_text(cx, cy + int(9 * k), text=name,
-                          font=self.f_small, fill=self.t["dim"])
-        if not groups:
-            c.create_text(w / 2, h / 2, text="右键 → 设置",
-                          font=self.f_small, fill=self.t["dim"])
-        geo = "%dx%d" % (w, h)
-        if not self._placed:
-            x, y0 = self._clamp_start_pos()
-            geo += "+%d+%d" % (x, y0)
-            self._placed = True
-        self.root.geometry(geo)
-
-    # ---------------- 圆环悬停详情 ----------------
-
-    def _schedule_tip(self):
-        self._cancel_tip()
-        self._tip_timer = self.root.after(450, self._show_tip)
-
-    def _cancel_tip(self):
-        if self._tip_timer is not None:
-            try:
-                self.root.after_cancel(self._tip_timer)
-            except Exception:
-                pass
-            self._tip_timer = None
-        if self._tip_window is not None:
-            try:
-                self._tip_window.destroy()
-            except Exception:
-                pass
-            self._tip_window = None
-
-    def _show_tip(self):
-        self._tip_timer = None
-        if self._tip_window is not None or self.dock_state == "docked":
-            return
-        lines = []  # (text, color, is_title)
-        for name, _accent, bars in self._progress_groups():
-            title = ("智谱 Coding Plan" if name == "智谱" else "火山 Agent Plan")
-            lines.append((title, self.t["text"], True))
-            if bars:
-                for label, pct in bars:
-                    txt = "%s   %s" % (
-                        label, "—" if pct is None else "%.0f%%" % float(pct))
-                    lines.append((txt, self._color(pct), False))
-            else:
-                err = self.errors.get("zhipu" if name == "智谱" else "volcano")
-                lines.append(((err or "无数据")[:18], self.t["dim"], False))
-        if self.last_ok_time:
-            lines.append(("更新于 " + self.last_ok_time.strftime("%H:%M"),
-                          self.t["dim"], False))
-        if not lines:
-            return
-        k = self.k
-        pad = int(8 * k)
-        line_h = max(16, int(18 * k))
-        title_h = max(18, int(20 * k))
-        w = max(int(132 * k),
-                max(self.f_text.measure(t) for t, _, _ in lines) + pad * 2)
-        h = pad * 2 + sum(title_h if ist else line_h for _, _, ist in lines)
-        tw = tk.Toplevel(self.root)
-        tw.wm_overrideredirect(True)
-        try:
-            tw.attributes("-topmost", True)
-        except Exception:
-            pass
-        cv = tk.Canvas(tw, bg=C_BG, highlightthickness=0, width=w, height=h)
-        cv.pack()
-        self._round_rect(1, 1, w - 1, h - 1, max(6, int(8 * k)),
-                         canvas=cv, fill=self.t["card"], outline=self.t["line"])
-        yy = pad
-        for text, color, is_title in lines:
-            hh = title_h if is_title else line_h
-            cv.create_text(pad + int(2 * k), yy + hh / 2.0, text=text,
-                           anchor="w",
-                           font=self.f_title if is_title else self.f_text,
-                           fill=color)
-            yy += hh
-        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        x = self.root.winfo_x() + self.cur_w + 6
-        y = self.root.winfo_y()
-        if x + w > sw - 4:
-            x = self.root.winfo_x() - w - 6
-        x = min(max(0, x), max(0, sw - w))
-        y = min(max(0, y), max(0, sh - h))
-        tw.geometry("+%d+%d" % (x, y))
-        self._tip_window = tw
-
-    # ---------------- 卡片形态（默认） ----------------
-
-    def _redraw_card(self):
-        c = self.canvas
-        c.delete("all")
-
-        show_z = self.cfg.get("zhipu", {}).get("enabled", True)
-        show_v = self.cfg.get("volcano", {}).get("enabled", True)
-
-        y = self.pad - int(2 * self.k)
-        status = self._title_status()
-        first = True
-
-        # ---- 智谱卡片 ----
-        if show_z:
-            zd = self.data.get("zhipu")
-            rows = 2
-            h = self.title_h + rows * self.row_h + int(8 * self.k)
-            self._card(y, h)
-            level = (zd or {}).get("level") or ""
-            self._provider_title(y, "智谱", level, C_ACCENT_Z,
-                                 self.errors["zhipu"],
-                                 status if first else "")
-            first = False
-            ry = y + self.title_h
-            if zd and zd.get("ok"):
-                self._row(ry, "5小时", zd.get("five_hour")); ry += self.row_h
-                self._row(ry, "本周", zd.get("weekly"))
-            else:
-                hint = self.errors["zhipu"] or "右键 → 设置 填 Key"
-                self._hint_center(y + self.title_h,
-                                  h - self.title_h, hint)
-            y += h + self.card_gap
-
-        # ---- 火山卡片 ----
-        if show_v:
-            vd = self.data.get("volcano")
-            windows = (vd or {}).get("windows") or []
-            rows = max(1, len(windows))
-            h = self.title_h + rows * self.row_h + int(8 * self.k)
-            self._card(y, h)
-            level = (vd or {}).get("level") or ""
-            self._provider_title(y, "火山", level, C_ACCENT_V,
-                                 self.errors["volcano"],
-                                 status if first else "")
-            first = False
-            ry = y + self.title_h
-            if vd and vd.get("ok") and windows:
-                for name, used, quota, reset in windows:
-                    pct = round(used * 100.0 / quota, 1) if quota else None
-                    right = "%d%%" % round(pct) if pct is not None else "—"
-                    self._row(ry, name, pct, right_text=right)
-                    ry += self.row_h
-            else:
-                hint = self.errors["volcano"] or "右键 → 设置 填 AK/SK"
-                self._hint_center(y + self.title_h,
-                                  h - self.title_h, hint)
-            y += h + self.card_gap
-
-        if not show_z and not show_v:
-            h = self.title_h + 2 * self.row_h + int(8 * self.k)
-            self._card(y, h)
-            self._hint_center(y, h, "两个供应商均已停用")
-            y += h + self.card_gap
-
-        total_h = y - self.card_gap + int(2 * self.k)
-        self.cur_w, self.cur_h = self.W, total_h
-        c.configure(width=self.W, height=total_h)
-        geo = "%dx%d" % (self.W, total_h)
-        if not self._placed:
-            x, y0 = self._clamp_start_pos()
-            geo += "+%d+%d" % (x, y0)
-            self._placed = True
-        # 首次按配置定位，之后只调尺寸不重置位置（避免拖动后被刷新弹回）
-        self.root.geometry(geo)
 
     @staticmethod
     def _fmt_num(n):
