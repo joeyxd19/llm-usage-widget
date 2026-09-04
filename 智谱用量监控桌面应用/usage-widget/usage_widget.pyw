@@ -1712,18 +1712,18 @@ class UsageWidget:
     # ---------------- 贴边把手：微型进度条 ----------------
 
     def _redraw_handle(self):
-        """贴边收起状态：边缘只留一条窄把手，内嵌各供应商微型进度条。"""
+        """贴边收起状态：边缘只留一条短把手，内嵌各供应商微型进度条。"""
         c = self.canvas
         c.delete("all")
         k = self.k
         side = self.dock_side
-        w, h = self._compute_layout_size()
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        t = max(7, int(12 * k))  # 露出厚度
+        t = max(7, int(12 * k))      # 露出厚度
+        grip = int(120 * k)          # 把手长度：固定短条，不随面板高度走
         if side in ("left", "right"):
-            hw, hl = t, min(h, sh - 4)
+            hw, hl = t, max(t * 4, min(grip, sh - 4))
         else:
-            hw, hl = min(w, sw - 4), t
+            hw, hl = max(t * 4, min(grip, sw - 4)), t
 
         # 胶囊形背景
         self._round_rect(0, 0, hw, hl, min(hw, hl) / 2.0,
