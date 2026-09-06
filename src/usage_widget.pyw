@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.3.7"
+APP_VERSION = "2.4.0"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------

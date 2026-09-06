@@ -10,21 +10,30 @@ Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **�
 - **配色主题**：深色 / 浅色 / 自动跟随背景明暗
 - **额度预警**：绿（正常）/ 黄（偏高）/ 红（临界）三档变色，阈值可调
 - **高分屏适配**：DPI 感知渲染 + 界面缩放（75%~130%）+ 透明度可调
-- **轻量常驻**：单文件 Python（tkinter），无第三方运行时依赖；开机自启、单实例保护
+- **轻量常驻**：单文件 Python（tkinter）；开机自启、单实例保护；也可打包为免安装 EXE
 
 ## 快速开始
 
-**方式一：直接运行源码**（需 Python 3.10+，自带 tkinter）
+**方式一：双击 EXE（推荐，无需安装 Python）**
 
-```bash
-cd 智谱用量监控桌面应用/usage-widget
-python usage_widget.pyw
+```
+release\额度悬浮窗.exe
 ```
 
-**方式二：打包 EXE**（PyInstaller）
+**方式二：运行源码**（需 Python 3.10+，自带 tkinter）
 
 ```bash
-pyinstaller --onefile --windowed usage_widget.pyw
+python src/usage_widget.pyw
+```
+
+**方式三：静默启动脚本**
+
+双击 `scripts/启动.vbs`：优先启动 EXE，没有 EXE 时自动改用本机 Python 跑源码。
+
+**打包 EXE**（PyInstaller）：
+
+```bash
+pyinstaller --onefile --windowed --name 额度悬浮窗 --distpath release --workpath build --specpath build src/usage_widget.pyw
 ```
 
 首次运行会弹出设置窗口，填入密钥即可：
@@ -34,22 +43,24 @@ pyinstaller --onefile --windowed usage_widget.pyw
 | 智谱 | API Key | [智谱开放平台](https://open.bigmodel.cn/) → API Keys |
 | 火山引擎 | AccessKey ID / Secret | [火山引擎控制台](https://console.volcengine.com/) → 右上角头像 → API 访问密钥（AKLT 开头，需 `ArkFullAccess` 或 `ark:GetAFPUsage` 只读权限） |
 
-> 密钥只保存在本机 `config.json`（已被 `.gitignore` 排除），软件不经过任何第三方服务器。
+> 密钥只保存在本机 `config.json`（与 EXE / 源码同目录，已被 `.gitignore` 排除），软件不经过任何第三方服务器。
 
 ## 目录结构
 
 ```
-智谱用量监控桌面应用/
-└── usage-widget/
-    ├── usage_widget.pyw   # 主程序（单文件）
-    ├── 使用说明.md        # 完整使用说明
-    └── 启动.vbs           # 静默启动脚本
-额度悬浮窗/                  # EXE 分发目录（EXE 与使用说明，不入库）
-版本备份/
-└── 版本日志.md            # 版本历史（各版 EXE 留档，不入库）
+llm-usage-widget/
+├── src/
+│   └── usage_widget.pyw    # 主程序（单文件）
+├── docs/
+│   ├── 使用说明.md          # 完整使用说明与常见问题
+│   └── 版本日志.md          # 各版本变更记录
+├── scripts/
+│   └── 启动.vbs             # 静默启动脚本（EXE 优先）
+└── release/                 # PyInstaller 打包产物（不入库）
+    └── 额度悬浮窗.exe
 ```
 
 ## 使用说明与常见问题
 
-完整文档见 [额度悬浮窗/使用说明.md](额度悬浮窗/使用说明.md)，
+完整文档见 [docs/使用说明.md](docs/使用说明.md)，
 涵盖贴边收起、设置项、密钥配置、白色背景看不清、AK/SK 权限、防火墙提示等。

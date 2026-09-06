@@ -1,15 +1,13 @@
-# 二进制与构建产物不入库（用 版本备份/ 文件夹保存各版 EXE）
+# 二进制与构建产物不入库（EXE 产出在 release/，历史版本走 GitHub 提交历史）
 *.exe
 build/
 dist/
+release/
 __pycache__/
 *.pyc
 
 # 含密钥的配置不入库
 config.json
-
-# 版本快照文件夹（含 EXE 副本）
-版本备份/v*/
 
 # 运行日志
 error.log
