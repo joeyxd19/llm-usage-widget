@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.3.5"
+APP_VERSION = "2.3.6"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -430,24 +430,37 @@ def fetch_zhipu(zcfg):
     limits = data.get("limits") or []
 
     tokens = [l for l in limits if l.get("type") == "TOKENS_LIMIT"]
-    # 两个 TOKENS_LIMIT：nextResetTime 早的是 5 小时窗口，晚的是周窗口
+    # 两个 TOKENS_LIMIT 靠 unit/number 显式区分（接口实测，v2.3.6）：
+    #   5 小时窗口 unit=3 number=5；本周窗口 unit=6 number=1。
+    # 不能按 nextResetTime 排序猜：5 小时窗口未激活时该字段可能缺失，
+    # 且周窗口的重置点也可能早于下一个 5 小时边界，排序必然出错。
+    def _is_five_hour(l):
+        try:
+            return int(l.get("number") or 0) == 5 and int(l.get("unit") or 0) == 3
+        except Exception:
+            return False
+
     def _reset_key(l):
         v = l.get("nextResetTime")
         return v if isinstance(v, (int, float)) else float("inf")
-    try:
-        tokens.sort(key=_reset_key)
-    except Exception:
-        pass
-    if len(tokens) >= 1:
-        result["five_hour"] = tokens[0].get("percentage")
-    if len(tokens) >= 2:
-        result["weekly"] = tokens[1].get("percentage")
-    # 完整窗口明细（详情面板用）：(名称, 百分比, 重置时间戳)
-    for i in range(min(2, len(tokens))):
-        result["windows"].append(
-            ("5小时" if i == 0 else "本周",
-             tokens[i].get("percentage"),
-             tokens[i].get("nextResetTime")))
+
+    five = next((l for l in tokens if _is_five_hour(l)), None)
+    week = next((l for l in tokens if not _is_five_hour(l)), None) \
+        if len(tokens) >= 2 else None
+    if five is None and week is None and tokens:
+        # unit/number 全缺失时兜底：重置早的当 5 小时窗口
+        rest = sorted(tokens, key=_reset_key)
+        five = rest[0]
+        week = rest[1] if len(rest) >= 2 else None
+    if five is not None:
+        result["five_hour"] = five.get("percentage")
+    if week is not None:
+        result["weekly"] = week.get("percentage")
+    # 完整窗口明细（详情面板用）：(名称, 百分比, 重置时间戳)，固定 5 小时在前
+    for name, l in (("5小时", five), ("本周", week)):
+        if l is not None:
+            result["windows"].append(
+                (name, l.get("percentage"), l.get("nextResetTime")))
 
     mcp = next((l for l in limits if l.get("type") == "TIME_LIMIT"), None)
     if mcp:
