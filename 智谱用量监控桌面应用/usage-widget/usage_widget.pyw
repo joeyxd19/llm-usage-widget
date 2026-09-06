@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.3.6"
+APP_VERSION = "2.3.7"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -703,6 +703,11 @@ class SettingsDialog(tk.Toplevel):
                        variable=self.edge_dock, bg="#f0f0f0", anchor="w"
                        ).pack(side="left")
 
+        self.dock_len = tk.IntVar(
+            value=min(240, max(40, int(cfg.get("dock_len", 70)))))
+        self._spin_row(page_d, "长条长度", self.dock_len, 40, 240,
+                       "px（贴边收起小条的长度）")
+
         scale_now = float(cfg.get("ui_scale", 1.0))
         nearest = min(SCALE_STEPS, key=lambda s: abs(s - scale_now))
         self.scale_var = tk.StringVar(value=SCALE_LABELS[nearest])
@@ -825,6 +830,7 @@ class SettingsDialog(tk.Toplevel):
             "theme": {v: k for k, v in THEME_LABELS.items()}.get(
                 self.theme_choice.get(), "auto"),
             "edge_dock": bool(self.edge_dock.get()),
+            "dock_len": min(240, max(40, int(self.dock_len.get()))),
             "ui_scale": scale_val,
             "opacity": min(1.0, max(0.6, int(self.opacity.get()) / 100.0)),
             "refresh_minutes": min(120, max(1, int(self.refresh.get()))),
@@ -1850,7 +1856,12 @@ class UsageWidget:
         side = self.dock_side
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         t = max(7, int(12 * k))      # 露出厚度
-        grip = int(70 * k)           # 把手长度：固定短条，不随面板高度走
+        # 把手长度：设置「长条长度」可调（逻辑像素，随缩放走），默认 70，限 40~240
+        try:
+            dock_len = float(self.cfg.get("dock_len", 70))
+        except Exception:
+            dock_len = 70.0
+        grip = int(min(240.0, max(40.0, dock_len)) * k)
         if side in ("left", "right"):
             return t, max(t * 4, min(grip, sh - 4))
         return max(t * 4, min(grip, sw - 4)), t
