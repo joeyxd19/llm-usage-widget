@@ -97,6 +97,7 @@ DEFAULT_CONFIG = {
     "theme": "auto",           # auto 自动跟随背景 | dark 深色 | light 浅色
     "edge_dock": True,         # 贴边自动收起
     "dock_side": "none",       # none/left/right/top/bottom（上次收起的边）
+    "dock_len": 150,           # 贴边长条默认长度（px，40~240）
 }
 
 SCALE_STEPS = [0.75, 0.9, 1.0, 1.15, 1.3]
@@ -704,7 +705,7 @@ class SettingsDialog(tk.Toplevel):
                        ).pack(side="left")
 
         self.dock_len = tk.IntVar(
-            value=min(240, max(40, int(cfg.get("dock_len", 70)))))
+            value=min(240, max(40, int(cfg.get("dock_len", 150)))))
         self._spin_row(page_d, "长条长度", self.dock_len, 40, 240,
                        "px（贴边收起小条的长度）")
 
@@ -1864,11 +1865,11 @@ class UsageWidget:
         side = self.dock_side
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         t = max(7, int(12 * k))      # 露出厚度
-        # 把手长度：设置「长条长度」可调（逻辑像素，随缩放走），默认 70，限 40~240
+        # 把手长度：设置「长条长度」可调（逻辑像素，随缩放走），默认 150，限 40~240
         try:
-            dock_len = float(self.cfg.get("dock_len", 70))
+            dock_len = float(self.cfg.get("dock_len", 150))
         except Exception:
-            dock_len = 70.0
+            dock_len = 150.0
         grip = int(min(240.0, max(40.0, dock_len)) * k)
         if side in ("left", "right"):
             return t, max(t * 4, min(grip, sh - 4))

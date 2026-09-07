@@ -6,7 +6,7 @@ Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **�
 
 > 适用于任何 Windows 10/11 电脑，无需安装 Python 或任何依赖。
 
-1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中下载 `llm-usage-widget_v2.4.1.exe`（约 10 MB）
+1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中下载 EXE 附件（`llm-usage-widget_版本号.exe`，约 10 MB）
 2. 双击运行。首次运行若弹出 Windows SmartScreen 蓝色提示，点「更多信息」→「仍要运行」
 3. 首次运行会弹出设置窗口，填入密钥即可开始使用
 
