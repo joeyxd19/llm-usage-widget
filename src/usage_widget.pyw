@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -1468,11 +1468,19 @@ class UsageWidget:
             self._toast("开机自启仅支持 Windows")
             return
         if getattr(sys, "frozen", False):
-            inner = '"%s"' % os.path.abspath(sys.executable)
+            # 打包版：直接启动 EXE。整条命令包在一对引号里，
+            # 内部路径的引号用两个连续引号转义，避免 VBScript 语法错误
+            cmd = '""%s""' % os.path.abspath(sys.executable)
         else:
             script = os.path.abspath(__file__)
-            inner = '"%s" "%s"' % (sys.executable, script)
-        content = 'CreateObject("WScript.Shell").Run %s, 0, False\n' % inner
+            exe = sys.executable
+            # 若当前由 python.exe 启动，换用 pythonw.exe，避免自启时弹出控制台
+            if os.path.basename(exe).lower() == "python.exe":
+                pw = os.path.join(os.path.dirname(exe), "pythonw.exe")
+                if os.path.exists(pw):
+                    exe = pw
+            cmd = '""%s"" ""%s""' % (exe, script)
+        content = 'CreateObject("WScript.Shell").Run "%s", 0, False\n' % cmd
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as f:
