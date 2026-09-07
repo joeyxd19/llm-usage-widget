@@ -2,6 +2,16 @@
 
 Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **火山引擎 Agent Plan** 的额度用量。
 
+## 直接下载使用（免安装）
+
+> 适用于任何 Windows 10/11 电脑，无需安装 Python 或任何依赖。
+
+1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中下载 `llm-usage-widget_v2.4.1.exe`（约 10 MB）
+2. 双击运行。首次运行若弹出 Windows SmartScreen 蓝色提示，点「更多信息」→「仍要运行」
+3. 首次运行会弹出设置窗口，填入密钥即可开始使用
+
+EXE 由 PyInstaller 打包，内嵌完整 Python 运行环境；密钥只保存在本机 `config.json`，不经过任何第三方服务器。
+
 ## 功能特性
 
 - **双供应商监控**：智谱（5 小时 / 本周 / MCP 联网工具）+ 火山（5 小时 / 本周 / 本月）
@@ -10,17 +20,15 @@ Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **�
 - **配色主题**：深色 / 浅色 / 自动跟随背景明暗
 - **额度预警**：绿（正常）/ 黄（偏高）/ 红（临界）三档变色，阈值可调
 - **高分屏适配**：DPI 感知渲染 + 界面缩放（75%~130%）+ 透明度可调
-- **轻量常驻**：单文件 Python（tkinter）；开机自启、单实例保护；也可打包为免安装 EXE
+- **轻量常驻**：单文件 Python（仅标准库，零第三方依赖）；开机自启、单实例保护；亦可打包为免安装 EXE
 
 ## 快速开始
 
-**方式一：双击 EXE（推荐，无需安装 Python）**
+**方式一：下载 Release 附件 EXE（推荐，无需安装 Python）**
 
-```
-release\额度悬浮窗.exe
-```
+见上文「直接下载使用」，或直接打开 [Releases 页面](https://github.com/joeyxd19/llm-usage-widget/releases)。
 
-**方式二：运行源码**（需 Python 3.10+，自带 tkinter）
+**方式二：运行源码**（需 Python 3.10+，自带 tkinter，无第三方依赖）
 
 ```bash
 python src/usage_widget.pyw
@@ -50,13 +58,13 @@ pyinstaller --onefile --windowed --name 额度悬浮窗 --distpath release --wor
 ```
 llm-usage-widget/
 ├── src/
-│   └── usage_widget.pyw    # 主程序（单文件）
+│   └── usage_widget.pyw    # 主程序（单文件，仅标准库）
 ├── docs/
 │   ├── 使用说明.md          # 完整使用说明与常见问题
 │   └── 版本日志.md          # 各版本变更记录
 ├── scripts/
 │   └── 启动.vbs             # 静默启动脚本（EXE 优先）
-└── release/                 # PyInstaller 打包产物（不入库）
+└── release/                 # 本地 PyInstaller 打包产物（不入库，发布版见 Releases）
     └── 额度悬浮窗.exe
 ```
 
