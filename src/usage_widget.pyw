@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.1"
+APP_VERSION = "2.4.3"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -80,6 +80,7 @@ DEFAULT_CONFIG = {
         "enabled": True,
         "api_key": "在这里填你的智谱API_Key",
         "base_url": "open.bigmodel.cn",
+        "show_30d": True,        # 详情面板显示近 30 天 token 用量
     },
     "volcano": {
         "enabled": True,
@@ -402,7 +403,8 @@ def fetch_zhipu(zcfg):
     认证: Authorization: <API_KEY>（不带 Bearer）
     """
     result = {"ok": False, "level": "", "five_hour": None,
-              "weekly": None, "mcp": None, "windows": [], "error": ""}
+              "weekly": None, "mcp": None, "windows": [],
+              "thirty_day": None, "error": ""}
     key = (zcfg.get("api_key") or "").strip()
     if is_placeholder(key):
         result["error"] = "未配置 API Key"
@@ -477,8 +479,49 @@ def fetch_zhipu(zcfg):
                          "reset_ms": mcp.get("nextResetTime"),
                          "details": details}
 
+    # 近 30 天 token 用量：独立接口，失败静默降级，不影响主数据展示
+    if zcfg.get("show_30d", True):
+        try:
+            result["thirty_day"] = fetch_zhipu_30d(base, key)
+        except Exception:
+            result["thirty_day"] = None
+
     result["ok"] = True
     return result
+
+
+def fetch_zhipu_30d(base, key, days=30):
+    """
+    GET {base}/api/monitor/usage/model-usage?startTime=..&endTime=..
+    与 quota/limit 同族同认证（Authorization 直接放 API Key，不带 Bearer）。
+    返回 data.totalUsage.totalTokensUsage / totalModelCallCount，
+    即 [startTime, endTime] 区间内的 token 总量与调用总次数。
+
+    接口无公开文档（网页控制台同款），任何失败一律返回 None，
+    由调用方静默降级隐藏「近 30 天」行，不影响原有额度显示。
+    时间格式实测为 "YYYY-MM-DD HH:mm:ss"（本地时间）。
+    """
+    fmt = "%Y-%m-%d %H:%M:%S"
+    end = datetime.datetime.now()
+    start = end - datetime.timedelta(days=days)
+    qs = urllib.parse.urlencode({"startTime": start.strftime(fmt),
+                                 "endTime": end.strftime(fmt)})
+    code, body = http_json(base + "/api/monitor/usage/model-usage?" + qs, headers={
+        "Authorization": key,
+        "Content-Type": "application/json",
+        "User-Agent": "usage-widget/" + APP_VERSION,
+    })
+    if code == 0 or not isinstance(body, dict) or not body.get("success"):
+        return None
+    total = (body.get("data") or {}).get("totalUsage") or {}
+    tokens = total.get("totalTokensUsage")
+    if tokens is None:
+        return None
+    try:
+        return {"tokens": int(tokens),
+                "calls": int(total.get("totalModelCallCount") or 0)}
+    except (TypeError, ValueError):
+        return None
 
 
 # --------------------------------------------------------------------------
@@ -669,6 +712,9 @@ class SettingsDialog(tk.Toplevel):
         self.z_base = tk.StringVar(value=zcfg.get("base_url", "open.bigmodel.cn"))
         self._entry_row(page_p, "接口地址", self.z_base,
                         hint="国际版填 api.z.ai，一般不用改")
+        self.z_30d = tk.BooleanVar(value=bool(zcfg.get("show_30d", True)))
+        ttk.Checkbutton(page_p, text="显示近 30 天 token 用量",
+                        variable=self.z_30d).pack(anchor="w", pady=(8, 0))
 
         ttk.Separator(page_p).pack(fill="x", pady=12)
 
@@ -821,6 +867,7 @@ class SettingsDialog(tk.Toplevel):
                 "enabled": bool(self.z_en.get()),
                 "api_key": self.z_key.get().strip(),
                 "base_url": self.z_base.get().strip() or "open.bigmodel.cn",
+                "show_30d": bool(self.z_30d.get()),
             },
             "volcano": {
                 "enabled": bool(self.v_en.get()),
@@ -1680,6 +1727,14 @@ class UsageWidget:
                                    "label": "5 小时窗口" if nm == "5小时" else "本周额度",
                                    "pct": pct, "reset": rst, "used": "",
                                    "h": win_h})
+                # 近 30 天累计 token 用量（独立接口，拿不到数据时整行隐藏）
+                td = zd.get("thirty_day")
+                if td:
+                    blocks.append({"t": "stat", "label": "近 30 天用量",
+                                   "text": "%s tokens · %s 次" % (
+                                       self._fmt_tokens(td.get("tokens", 0)),
+                                       self._fmt_num(td.get("calls", 0))),
+                                   "h": line_h + int(6 * k)})
                 mcp = zd.get("mcp")
                 if mcp:
                     blocks.append({
@@ -1815,6 +1870,13 @@ class UsageWidget:
                                   font=self.f_small, fill=self.t["dim"])
                     y += det_h
                 y += int(9 * k)
+            elif t == "stat":
+                # 单行统计（左标签右数值），无进度条、无重置时间
+                c.create_text(pad, y + b["h"] / 2.0, text=b["label"], anchor="w",
+                              font=self.f_text, fill=self.t["dim"])
+                c.create_text(w - pad, y + b["h"] / 2.0, text=b["text"], anchor="e",
+                              font=self.f_text, fill=self.t["text"])
+                y += b["h"]
             elif t == "err":
                 c.create_text(pad, y + b["h"] / 2.0, text=b["text"][:34],
                               anchor="w", font=self.f_small, fill=self.t["warn"])
@@ -1973,6 +2035,19 @@ class UsageWidget:
             if n == int(n):
                 return str(int(n))
             return "%.1f" % n
+        except Exception:
+            return str(n)
+
+    @staticmethod
+    def _fmt_tokens(n):
+        """token 总量中文单位：>=1亿 → x.xx亿，>=1万 → x.x万，否则整数。"""
+        try:
+            n = float(n)
+            if n >= 1e8:
+                return "%.2f亿" % (n / 1e8)
+            if n >= 1e4:
+                return "%.1f万" % (n / 1e4)
+            return str(int(n))
         except Exception:
             return str(n)
 
