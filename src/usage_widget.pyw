@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.5"
+APP_VERSION = "2.4.6"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -1741,6 +1741,15 @@ class UsageWidget:
                                    "label": "5 小时窗口" if nm == "5小时" else "本周额度",
                                    "pct": pct, "reset": rst, "used": "",
                                    "h": win_h})
+                mcp = zd.get("mcp")
+                if mcp:
+                    blocks.append({
+                        "t": "win", "label": "MCP 每月额度",
+                        "pct": mcp.get("percent"), "reset": mcp.get("reset_ms"),
+                        "used": "已用 %s / %s" % (
+                            self._fmt_num(mcp.get("used", 0)),
+                            self._fmt_num(mcp.get("total", 0))),
+                        "h": win_h + det_h, "details": mcp.get("details") or []})
                 # 近 N 天累计 token 用量（独立接口，拿不到数据时整行隐藏）
                 for lbl, key in (("近 30 天用量", "thirty_day"),
                                  ("近 15 天用量", "fifteen_day"),
@@ -1752,15 +1761,6 @@ class UsageWidget:
                                            self._fmt_tokens(td.get("tokens", 0)),
                                            self._fmt_num(td.get("calls", 0))),
                                        "h": line_h + int(6 * k)})
-                mcp = zd.get("mcp")
-                if mcp:
-                    blocks.append({
-                        "t": "win", "label": "MCP 每月额度",
-                        "pct": mcp.get("percent"), "reset": mcp.get("reset_ms"),
-                        "used": "已用 %s / %s" % (
-                            self._fmt_num(mcp.get("used", 0)),
-                            self._fmt_num(mcp.get("total", 0))),
-                        "h": win_h + det_h, "details": mcp.get("details") or []})
             else:
                 blocks.append({"t": "err", "h": line_h + int(4 * k),
                                "text": "⚠ " + (self.errors.get("zhipu")
