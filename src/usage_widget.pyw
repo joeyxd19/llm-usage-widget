@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.4"
+APP_VERSION = "2.4.5"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -81,6 +81,8 @@ DEFAULT_CONFIG = {
         "api_key": "在这里填你的智谱API_Key",
         "base_url": "open.bigmodel.cn",
         "show_30d": True,        # 详情面板显示近 30 天 token 用量
+        "show_15d": True,        # 详情面板显示近 15 天 token 用量
+        "show_7d": True,         # 详情面板显示近 7 天 token 用量
     },
     "volcano": {
         "enabled": True,
@@ -481,10 +483,10 @@ def fetch_zhipu(zcfg):
                          "details": details}
 
     # 近 N 天 token 用量：独立接口，失败静默降级，不影响主数据展示
-    if zcfg.get("show_30d", True):
-        for days_key, days_val in (("thirty_day", 30),
-                                   ("fifteen_day", 15),
-                                   ("seven_day", 7)):
+    for days_key, days_val, flag in (("thirty_day", 30, "show_30d"),
+                                     ("fifteen_day", 15, "show_15d"),
+                                     ("seven_day", 7, "show_7d")):
+        if zcfg.get(flag, True):
             try:
                 result[days_key] = fetch_zhipu_30d(base, key, days=days_val)
             except Exception:
@@ -719,6 +721,12 @@ class SettingsDialog(tk.Toplevel):
         self.z_30d = tk.BooleanVar(value=bool(zcfg.get("show_30d", True)))
         ttk.Checkbutton(page_p, text="显示近 30 天 token 用量",
                         variable=self.z_30d).pack(anchor="w", pady=(8, 0))
+        self.z_15d = tk.BooleanVar(value=bool(zcfg.get("show_15d", True)))
+        ttk.Checkbutton(page_p, text="显示近 15 天 token 用量",
+                        variable=self.z_15d).pack(anchor="w", pady=(2, 0))
+        self.z_7d = tk.BooleanVar(value=bool(zcfg.get("show_7d", True)))
+        ttk.Checkbutton(page_p, text="显示近 7 天 token 用量",
+                        variable=self.z_7d).pack(anchor="w", pady=(2, 0))
 
         ttk.Separator(page_p).pack(fill="x", pady=12)
 
@@ -872,6 +880,8 @@ class SettingsDialog(tk.Toplevel):
                 "api_key": self.z_key.get().strip(),
                 "base_url": self.z_base.get().strip() or "open.bigmodel.cn",
                 "show_30d": bool(self.z_30d.get()),
+                "show_15d": bool(self.z_15d.get()),
+                "show_7d": bool(self.z_7d.get()),
             },
             "volcano": {
                 "enabled": bool(self.v_en.get()),
@@ -1745,7 +1755,7 @@ class UsageWidget:
                 mcp = zd.get("mcp")
                 if mcp:
                     blocks.append({
-                        "t": "win", "label": "MCP 联网工具 · 本月",
+                        "t": "win", "label": "MCP 每月额度",
                         "pct": mcp.get("percent"), "reset": mcp.get("reset_ms"),
                         "used": "已用 %s / %s" % (
                             self._fmt_num(mcp.get("used", 0)),
@@ -1882,7 +1892,7 @@ class UsageWidget:
                 c.create_text(pad, y + b["h"] / 2.0, text=b["label"], anchor="w",
                               font=self.f_text, fill=self.t["dim"])
                 c.create_text(w - pad, y + b["h"] / 2.0, text=b["text"], anchor="e",
-                              font=self.f_small, fill=self.t["dim"])
+                              font=self.f_text, fill=self.t["dim"])
                 y += b["h"]
             elif t == "err":
                 c.create_text(pad, y + b["h"] / 2.0, text=b["text"][:34],
@@ -2047,13 +2057,15 @@ class UsageWidget:
 
     @staticmethod
     def _fmt_tokens(n):
-        """token 总量中文单位：>=1亿 → x.xx亿，>=1万 → x.x万，否则整数。"""
+        """token 总量：>=1B → x.xxB，>=1M → x.xxM，>=1K → x.xK，否则整数。"""
         try:
             n = float(n)
-            if n >= 1e8:
-                return "%.2f亿" % (n / 1e8)
-            if n >= 1e4:
-                return "%.1f万" % (n / 1e4)
+            if n >= 1e9:
+                return "%.2fB" % (n / 1e9)
+            if n >= 1e6:
+                return "%.2fM" % (n / 1e6)
+            if n >= 1e3:
+                return "%.1fK" % (n / 1e3)
             return str(int(n))
         except Exception:
             return str(n)
