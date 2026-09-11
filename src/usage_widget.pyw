@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.3"
+APP_VERSION = "2.4.4"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -404,7 +404,8 @@ def fetch_zhipu(zcfg):
     """
     result = {"ok": False, "level": "", "five_hour": None,
               "weekly": None, "mcp": None, "windows": [],
-              "thirty_day": None, "error": ""}
+              "thirty_day": None, "fifteen_day": None,
+              "seven_day": None, "error": ""}
     key = (zcfg.get("api_key") or "").strip()
     if is_placeholder(key):
         result["error"] = "未配置 API Key"
@@ -479,12 +480,15 @@ def fetch_zhipu(zcfg):
                          "reset_ms": mcp.get("nextResetTime"),
                          "details": details}
 
-    # 近 30 天 token 用量：独立接口，失败静默降级，不影响主数据展示
+    # 近 N 天 token 用量：独立接口，失败静默降级，不影响主数据展示
     if zcfg.get("show_30d", True):
-        try:
-            result["thirty_day"] = fetch_zhipu_30d(base, key)
-        except Exception:
-            result["thirty_day"] = None
+        for days_key, days_val in (("thirty_day", 30),
+                                   ("fifteen_day", 15),
+                                   ("seven_day", 7)):
+            try:
+                result[days_key] = fetch_zhipu_30d(base, key, days=days_val)
+            except Exception:
+                result[days_key] = None
 
     result["ok"] = True
     return result
@@ -1727,14 +1731,17 @@ class UsageWidget:
                                    "label": "5 小时窗口" if nm == "5小时" else "本周额度",
                                    "pct": pct, "reset": rst, "used": "",
                                    "h": win_h})
-                # 近 30 天累计 token 用量（独立接口，拿不到数据时整行隐藏）
-                td = zd.get("thirty_day")
-                if td:
-                    blocks.append({"t": "stat", "label": "近 30 天用量",
-                                   "text": "%s tokens · %s 次" % (
-                                       self._fmt_tokens(td.get("tokens", 0)),
-                                       self._fmt_num(td.get("calls", 0))),
-                                   "h": line_h + int(6 * k)})
+                # 近 N 天累计 token 用量（独立接口，拿不到数据时整行隐藏）
+                for lbl, key in (("近 30 天用量", "thirty_day"),
+                                 ("近 15 天用量", "fifteen_day"),
+                                 ("近 7 天用量", "seven_day")):
+                    td = zd.get(key)
+                    if td:
+                        blocks.append({"t": "stat", "label": lbl,
+                                       "text": "%s tokens · %s 次" % (
+                                           self._fmt_tokens(td.get("tokens", 0)),
+                                           self._fmt_num(td.get("calls", 0))),
+                                       "h": line_h + int(6 * k)})
                 mcp = zd.get("mcp")
                 if mcp:
                     blocks.append({
@@ -1875,7 +1882,7 @@ class UsageWidget:
                 c.create_text(pad, y + b["h"] / 2.0, text=b["label"], anchor="w",
                               font=self.f_text, fill=self.t["dim"])
                 c.create_text(w - pad, y + b["h"] / 2.0, text=b["text"], anchor="e",
-                              font=self.f_text, fill=self.t["text"])
+                              font=self.f_small, fill=self.t["dim"])
                 y += b["h"]
             elif t == "err":
                 c.create_text(pad, y + b["h"] / 2.0, text=b["text"][:34],
