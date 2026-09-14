@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.6"
+APP_VERSION = "2.4.7"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -1064,9 +1064,11 @@ class UsageWidget:
     def _on_drag_start(self, event):
         self._cancel_collapse_timer()
         self._cancel_detail_tick()
-        # 从贴边收起/展开状态开始拖动：先瞬间恢复成正常窗口（贴边展开位）
+        # 从收起把手态开始拖动：先瞬间恢复成正常窗口（贴边展开位）。
+        # 展开态不在此转自由窗口 —— 纯点击（未移动）时必须保持
+        # dock_state == "expanded"，否则 Leave 后不会自动收回（卡住）
         snap_pos = None
-        if self.dock_state != "none":
+        if self.dock_state == "docked":
             snap_pos = self._snap_to_expanded()
         # 绝对定位锚点：鼠标屏幕坐标 - 窗口坐标
         # （snap 后 winfo 尚未刷新，用返回的精确位置）
@@ -1113,6 +1115,11 @@ class UsageWidget:
             if side:
                 self._dock_to(side, frm=frm)
                 return
+            if self.dock_state == "expanded":
+                # 从贴边展开态被拖走：转为自由窗口，停用自动收回
+                self.dock_state = "none"
+                self._placed = True
+                self._cancel_detail_tick()
             if self.dock_side != "none":
                 self.dock_side = "none"
                 save_config_patch({"dock_side": "none"})
@@ -1448,6 +1455,9 @@ class UsageWidget:
             self._collapse_to_dock()
 
     def _on_widget_leave(self, event):
+        # 拖动进行中（按下左键有隐式抓取，快速拖动会触发 Leave）不收回
+        if self._drag_offset is not None:
+            return
         if self.dock_state == "expanded" and not self._animating:
             if self.cfg.get("edge_dock", True):
                 # 面板边线与屏幕边缘重合时，指针顶到屏幕最边缘会被系统
