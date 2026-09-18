@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.7"
+APP_VERSION = "2.4.8"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -152,7 +152,7 @@ def load_config():
             cfg[section].update(user[section])
     for key in ("refresh_minutes", "opacity", "ui_scale", "warn_percent",
                 "critical_percent", "window_x", "window_y",
-                "theme", "edge_dock", "dock_side"):
+                "theme", "edge_dock", "dock_side", "dock_len"):
         if key in user:
             cfg[key] = user[key]
     return cfg
