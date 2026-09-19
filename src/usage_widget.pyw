@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.8"
+APP_VERSION = "2.4.9"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -1135,6 +1135,15 @@ class UsageWidget:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
             self.menu.grab_release()
+            self._suppress_collapse = False
+            # 菜单关闭后，若指针已不在窗口上则启动收回计时
+            if self.dock_state == "expanded" and not self._animating:
+                try:
+                    px, py = self.root.winfo_pointerx(), self.root.winfo_pointery()
+                    if not self._pointer_in_window(px, py):
+                        self._collapse_timer = self.root.after(300, self._collapse_to_dock)
+                except Exception:
+                    pass
 
     def _save_window_pos(self):
         save_config_patch({"window_x": self.root.winfo_x(),
