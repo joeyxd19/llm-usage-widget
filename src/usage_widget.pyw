@@ -68,7 +68,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.9"
+APP_VERSION = "2.4.10"
 CONFIG_NAME = "config.json"
 
 # --------------------------------------------------------------------------
@@ -1925,6 +1925,8 @@ class UsageWidget:
                 c.create_text(pad, cy,
                               text="每 %d 分钟自动刷新 · 右键可立即刷新" % rm,
                               anchor="w", font=self.f_small, fill=self.t["dim"])
+                c.create_text(w - pad, cy, text="v" + APP_VERSION,
+                              anchor="e", font=self.f_small, fill=self.t["dim"])
 
         c.configure(width=w, height=h)
         geo = "%dx%d" % (w, h)
