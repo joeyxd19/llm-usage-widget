@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.3.2 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.5.0 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.5.0 更新：
+- 系统通知预警：用量跨过黄/红阈值、按烧速预测撑不到重置、5 小时窗口
+  临近重置（≤20 分钟且用量偏高）时弹 Windows 通知，每窗口期只提醒一次；
+  设置里可整体开关
+- 烧速预测：本地记录每次刷新的用量快照（history.jsonl，保留 14 天），
+  对 5 小时/本周窗口做最小二乘斜率外推，面板上显示"烧速 X%/时 ·
+  预计 Y 后用尽/到重置约 Z%"，撑不到重置时标红
+- 数据不足（<4 个点或跨度 <20 分钟）或烧速接近零时不显示预测，保持安静
 
 v2.3.2 更新：
 - 修复火山引擎"网络错误"：误把整段 "AK + Secret Access Key:xxx" 粘进
@@ -68,8 +77,10 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.4.10"
+APP_VERSION = "2.5.0"
 CONFIG_NAME = "config.json"
+HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
+HISTORY_KEEP_DAYS = 14           # 历史保留天数
 
 # --------------------------------------------------------------------------
 # 配置
@@ -95,6 +106,7 @@ DEFAULT_CONFIG = {
     "ui_scale": 1.0,
     "warn_percent": 80,
     "critical_percent": 95,
+    "notify": True,             # 系统通知预警（阈值跨越/烧速预测/临近重置）
     "window_x": 120,
     "window_y": 120,
     "theme": "auto",           # auto 自动跟随背景 | dark 深色 | light 浅色
@@ -151,7 +163,7 @@ def load_config():
         if isinstance(user.get(section), dict):
             cfg[section].update(user[section])
     for key in ("refresh_minutes", "opacity", "ui_scale", "warn_percent",
-                "critical_percent", "window_x", "window_y",
+                "critical_percent", "notify", "window_x", "window_y",
                 "theme", "edge_dock", "dock_side", "dock_len"):
         if key in user:
             cfg[key] = user[key]
@@ -177,6 +189,80 @@ def save_config_patch(patch):
 
 def is_placeholder(value):
     return (not value) or ("这里填" in str(value)) or str(value).strip() == ""
+
+
+# --------------------------------------------------------------------------
+# 本地用量历史（烧速预测与趋势的数据基础）
+# --------------------------------------------------------------------------
+
+_history_last_prune = 0.0
+
+
+def history_path():
+    return os.path.join(app_dir(), HISTORY_NAME)
+
+
+def append_history(record):
+    """追加一条用量快照 {ts, z5, zw, zm, v5, vw, vm...}；
+    顺带节流清理过期记录（每天最多一次），全部失败静默。"""
+    global _history_last_prune
+    try:
+        with open(history_path(), "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        return
+    now = time.time()
+    if now - _history_last_prune < 86400:
+        return
+    _history_last_prune = now
+    prune_history(now - HISTORY_KEEP_DAYS * 86400)
+
+
+def prune_history(cutoff_ts):
+    """重写历史文件，只保留 cutoff_ts 之后的记录（原子替换）。"""
+    try:
+        kept = []
+        with open(history_path(), "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ts = json.loads(line).get("ts")
+                except Exception:
+                    continue
+                if isinstance(ts, (int, float)) and ts >= cutoff_ts:
+                    kept.append(line)
+        tmp = history_path() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            for line in kept:
+                f.write(line + "\n")
+        os.replace(tmp, history_path())
+    except Exception:
+        pass
+
+
+def load_history(max_age_seconds):
+    """读取最近 max_age_seconds 的快照，按时间升序返回 list[dict]。"""
+    cutoff = time.time() - max_age_seconds
+    out = []
+    try:
+        with open(history_path(), "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                ts = rec.get("ts") if isinstance(rec, dict) else None
+                if isinstance(ts, (int, float)) and ts >= cutoff:
+                    out.append(rec)
+        out.sort(key=lambda r: r.get("ts", 0))
+    except Exception:
+        return []
+    return out
 
 
 def norm_epoch(value):
@@ -222,6 +308,16 @@ def fmt_reset_info(value, now=None):
         wd = "一二三四五六日"[dt.weekday()]
         abs_s = "%d月%d日（周%s）%s" % (dt.month, dt.day, wd, dt.strftime("%H:%M"))
     return cd, abs_s
+
+
+def fmt_duration(minutes):
+    """分钟数 → 中文时长描述（预测行/通知文案用）。"""
+    m = max(1, int(round(minutes)))
+    if m < 60:
+        return "%d 分钟" % m
+    if m < 48 * 60:
+        return "%d 小时 %02d 分" % (m // 60, m % 60)
+    return "%d 天 %d 小时" % (m // 1440, (m % 1440) // 60)
 
 
 # --------------------------------------------------------------------------
@@ -308,6 +404,126 @@ def sample_background_luminance(x, y, w, h, screen_w, screen_h):
             user32.ReleaseDC(0, dc)
     except Exception:
         return None
+
+
+# --------------------------------------------------------------------------
+# Windows 系统通知（Shell_NotifyIcon 气泡，Win10+ 自动呈现为 Toast）
+# --------------------------------------------------------------------------
+
+NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
+NIF_ICON, NIF_TIP, NIF_INFO = 0x02, 0x04, 0x10
+NIIF_INFO, NIIF_WARNING = 0x01, 0x02
+
+_NOTIFY_TRAY_UIN = 0x7583
+_NOTIFY_ICON_ON = {"hwnd": 0}   # 当前已注册托盘图标的窗口句柄
+
+
+def _build_notify_struct(hwnd, title, text, warn):
+    """构造 NOTIFYICONDATAW；非 Windows 或构造失败返回 None。"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+
+        class GUID(ctypes.Structure):
+            _fields_ = (("Data1", wt.DWORD), ("Data2", wt.WORD),
+                        ("Data3", wt.WORD), ("Data4", wt.BYTE * 8))
+
+        class NOTIFYICONDATAW(ctypes.Structure):
+            _fields_ = (
+                ("cbSize", wt.DWORD),
+                ("hWnd", wt.HWND),
+                ("uID", wt.UINT),
+                ("uFlags", wt.UINT),
+                ("uCallbackMessage", wt.UINT),
+                ("hIcon", wt.HICON),
+                ("szTip", wt.WCHAR * 128),
+                ("dwState", wt.DWORD),
+                ("dwStateMask", wt.DWORD),
+                ("szInfo", wt.WCHAR * 256),
+                ("uVersion", wt.UINT),
+                ("szInfoTitle", wt.WCHAR * 64),
+                ("dwInfoFlags", wt.DWORD),
+                ("guidItem", GUID),
+                ("hBalloonIcon", wt.HICON),
+            )
+
+        nid = NOTIFYICONDATAW()
+        nid.cbSize = ctypes.sizeof(NOTIFYICONDATAW)
+        nid.hWnd = hwnd
+        nid.uID = _NOTIFY_TRAY_UIN
+        nid.uFlags = NIF_ICON | NIF_TIP | NIF_INFO
+        nid.hIcon = ctypes.windll.user32.LoadIconW(None, 32512)  # IDI_APPLICATION
+        nid.szTip = APP_NAME[:100]
+        nid.szInfo = (text or "")[:250]
+        nid.szInfoTitle = (title or "")[:60]
+        nid.dwInfoFlags = NIIF_WARNING if warn else NIIF_INFO
+        return nid
+    except Exception:
+        return None
+
+
+def windows_notify(hwnd, title, text, warn=False):
+    """弹系统通知；托盘图标为通知临时注册，30 秒后自动移除，不常驻。"""
+    if not hwnd:
+        return False
+    nid = _build_notify_struct(hwnd, title, text, warn)
+    if nid is None:
+        return False
+    try:
+        import ctypes
+        shell = ctypes.windll.shell32
+        if _NOTIFY_ICON_ON["hwnd"] == hwnd:
+            shown = shell.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
+        else:
+            shown = shell.Shell_NotifyIconW(NIM_ADD, ctypes.byref(nid))
+            if shown:
+                _NOTIFY_ICON_ON["hwnd"] = hwnd
+        if not shown:
+            return False
+        # 多次通知共用同一图标；定时器逐一触发删除时只有首个真正生效
+        t = threading.Timer(30.0, _tray_icon_remove, args=(hwnd,))
+        t.daemon = True
+        t.start()
+        return True
+    except Exception:
+        return False
+
+
+def _tray_icon_remove(hwnd):
+    if _NOTIFY_ICON_ON["hwnd"] != hwnd:
+        return
+    _NOTIFY_ICON_ON["hwnd"] = 0
+    nid = _build_notify_struct(hwnd, "", "", False)
+    if nid is None:
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(nid))
+    except Exception:
+        pass
+
+
+def widget_hwnd(root):
+    """取 tkinter 窗口的真正顶层 HWND（winfo_id 是内层子窗口）。"""
+    try:
+        import ctypes
+        h = int(root.winfo_id())
+        if not h:
+            return 0
+        return ctypes.windll.user32.GetParent(h) or h
+    except Exception:
+        return 0
+
+
+# 预测适用的窗口（秒）：只对短周期窗口做烧速外推才有指导意义
+PREDICT_WINDOWS = {"5小时": 5 * 3600, "本周": 7 * 86400}
+# (供应商, 窗口名) → 历史快照字段名
+HIST_KEY_MAP = {("zhipu", "5小时"): "z5", ("zhipu", "本周"): "zw",
+                ("zhipu", "MCP"): "zm",
+                ("volcano", "5小时"): "v5", ("volcano", "本周"): "vw",
+                ("volcano", "本月"): "vm"}
 
 
 _MUTEX_HANDLE = None
@@ -796,6 +1012,11 @@ class SettingsDialog(tk.Toplevel):
         self.crit = tk.IntVar(value=int(cfg.get("critical_percent", 95)))
         self._spin_row(page_d, "红色临界阈值", self.crit, 11, 99, "%")
 
+        self.notify_en = tk.BooleanVar(value=bool(cfg.get("notify", True)))
+        row = ttk.Frame(page_d); row.pack(fill="x", pady=(8, 0))
+        ttk.Checkbutton(row, text="系统通知预警（跨阈值 / 烧速预测 / 临近重置，每窗口期一次）",
+                        variable=self.notify_en).pack(side="left")
+
         ttk.Separator(page_d).pack(fill="x", pady=12)
         row = ttk.Frame(page_d); row.pack(fill="x")
         ttk.Label(row, text="开机自启", width=14, anchor="w").pack(side="left")
@@ -898,6 +1119,7 @@ class SettingsDialog(tk.Toplevel):
             "refresh_minutes": min(120, max(1, int(self.refresh.get()))),
             "warn_percent": warn,
             "critical_percent": crit,
+            "notify": bool(self.notify_en.get()),
         }
         self.on_apply(patch)
         self.destroy()
@@ -920,6 +1142,10 @@ class UsageWidget:
         self._placed = False
         self._drag_offset = None
         self._moved = False
+        # ---- 历史与通知 ----
+        self._hist = load_history(8 * 86400)   # 近 8 天快照（周窗口预测够用）
+        self._notify_state = {}                # "prov:窗口" → 预警去重状态
+        self._hwnd_cache = 0
 
         # ---- 贴边收起状态 ----
         # dock_state: none(自由) / docked(收起) / expanded(贴边展开) / expanding(展开动画中)
@@ -1590,6 +1816,11 @@ class UsageWidget:
                 self.root.after_cancel(self._anim_job)
             except Exception:
                 pass
+        try:
+            if self._hwnd_cache:
+                _tray_icon_remove(self._hwnd_cache)
+        except Exception:
+            pass
         self._save_window_pos()
         self.root.destroy()
 
@@ -1644,12 +1875,189 @@ class UsageWidget:
         if any_ok:
             self.last_ok_time = now
             self.status_text = "更新于 %s" % now.strftime("%H:%M")
+            self._record_history()
+            self._check_notifications()
         else:
             err = self.errors.get("zhipu") or self.errors.get("volcano") or "失败"
             self.status_text = "更新失败：%s" % err[:22]
         self.redraw()
         minutes = max(1, int(self.cfg.get("refresh_minutes", 5)))
         self.root.after(minutes * 60 * 1000, self.refresh_async)
+
+    # ---------------- 历史记录 / 烧速预测 / 通知 ----------------
+
+    @staticmethod
+    def _safe_pct(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _usage_snapshot(self):
+        """当前各窗口快照 [(供应商, 窗口名, 百分比, 重置时间戳), ...]。"""
+        out = []
+        zd = self.data.get("zhipu")
+        if zd and zd.get("ok"):
+            for nm, pct, rst in (zd.get("windows") or [])[:2]:
+                out.append(("zhipu", nm, self._safe_pct(pct), rst))
+            mcp = zd.get("mcp")
+            if mcp and mcp.get("percent") is not None:
+                out.append(("zhipu", "MCP", self._safe_pct(mcp["percent"]),
+                            mcp.get("reset_ms")))
+        vd = self.data.get("volcano")
+        if vd and vd.get("ok"):
+            for nm, used, quota, rst in (vd.get("windows") or [])[:3]:
+                pct = round(used * 100.0 / quota, 1) if quota else None
+                out.append(("volcano", nm, self._safe_pct(pct), rst))
+        return out
+
+    def _record_history(self):
+        """把本次各窗口百分比写入本地历史，并刷新内存快照。"""
+        rec = {"ts": time.time()}
+        for prov, nm, pct, _rst in self._usage_snapshot():
+            key = HIST_KEY_MAP.get((prov, nm))
+            if key and pct is not None:
+                rec[key] = round(min(100.0, max(0.0, pct)), 1)
+        if len(rec) > 1:
+            append_history(rec)
+            self._hist = load_history(8 * 86400)
+
+    def _window_points(self, prov, nm, reset_ts):
+        """当前窗口期内的历史点 [(ts, pct)]：优先按重置边界截断，
+        边界未知时在百分比大幅回落（>25 点）处截断，识别新窗口。"""
+        key = HIST_KEY_MAP.get((prov, nm))
+        if not key:
+            return []
+        start = None
+        dur = PREDICT_WINDOWS.get(nm)
+        ts0 = norm_epoch(reset_ts)
+        if dur and ts0:
+            start = ts0 - dur
+        pts = []
+        for rec in self._hist:
+            ts, v = rec.get("ts"), rec.get(key)
+            if not isinstance(ts, (int, float)) or not isinstance(v, (int, float)):
+                continue
+            if start is not None and ts < start:
+                continue
+            pts.append((float(ts), float(v)))
+        if not pts:
+            return []
+        cut = 0
+        for i in range(1, len(pts)):
+            if pts[i][1] < pts[i - 1][1] - 25:
+                cut = i
+        if cut:
+            pts = pts[cut:]
+        return pts
+
+    def _predict_calc(self, prov, nm, pct, reset_ts):
+        """最小二乘烧速外推。数据不足（<4 点或跨度 <20 分钟）或烧速
+        近乎零时返回 None，否则返回：
+        slope(%/分) exhaust_min reset_min(可能 None) reset_pct(可能 None)。"""
+        if nm not in PREDICT_WINDOWS or pct is None:
+            return None
+        pts = self._window_points(prov, nm, reset_ts)
+        now = time.time()
+        pts = [p for p in pts if p[0] <= now]
+        pts.append((now, float(pct)))
+        if len(pts) < 4 or pts[-1][0] - pts[0][0] < 20 * 60:
+            return None
+        n = float(len(pts))
+        mt = sum(p[0] for p in pts) / n
+        mp = sum(p[1] for p in pts) / n
+        s_tt = sum((p[0] - mt) ** 2 for p in pts)
+        if s_tt <= 0:
+            return None
+        slope = sum((p[0] - mt) * (p[1] - mp) for p in pts) / s_tt * 60.0
+        if slope < 0.02:          # %/分，近乎静止不预测
+            return None
+        reset_min = None
+        ts0 = norm_epoch(reset_ts)
+        if ts0:
+            reset_min = (ts0 - now) / 60.0
+            if reset_min <= 0:
+                reset_min = None
+        now_pct = pts[-1][1]
+        return {"slope": slope,
+                "exhaust_min": max(0.0, (100.0 - now_pct) / slope),
+                "reset_min": reset_min,
+                "reset_pct": (now_pct + slope * reset_min
+                              if reset_min is not None else None)}
+
+    def _predict_text(self, prov, nm, pct, reset_ts):
+        """详情面板预测行文案 (文本, 颜色键)；无预警价值时返回 None，
+        避免面板常驻噪音。"""
+        calc = self._predict_calc(prov, nm, pct, reset_ts)
+        if not calc:
+            return None
+        slope_h = calc["slope"] * 60.0
+        if calc["reset_min"] is not None and calc["exhaust_min"] < calc["reset_min"]:
+            return ("烧速 %.1f%%/时 · 预计 %s后用尽（重置还需 %s）"
+                    % (slope_h, fmt_duration(calc["exhaust_min"]),
+                       fmt_duration(calc["reset_min"])), "crit")
+        if (calc["reset_min"] is None and calc["exhaust_min"] < 240):
+            return ("烧速 %.1f%%/时 · 预计 %s后用尽"
+                    % (slope_h, fmt_duration(calc["exhaust_min"])), "warn")
+        warn_at = float(self.cfg.get("warn_percent", 80))
+        if calc["reset_pct"] is not None and calc["reset_pct"] >= warn_at:
+            return ("烧速 %.1f%%/时 · 按此速度到重置约 %d%%"
+                    % (slope_h, min(100, round(calc["reset_pct"]))), "warn")
+        return None
+
+    def _check_notifications(self):
+        """阈值跨越 / 预测耗尽 / 临近重置的系统通知；每窗口期各至多一次。
+        仅在新数据到达时被调用，天然以刷新间隔节流。"""
+        if not self.cfg.get("notify", True):
+            return
+        warn_at = float(self.cfg.get("warn_percent", 80))
+        crit_at = float(self.cfg.get("critical_percent", 95))
+        now = time.time()
+        for prov, nm, pct, rst in self._usage_snapshot():
+            if pct is None:
+                continue
+            key = "%s:%s" % (prov, nm)
+            st = self._notify_state.setdefault(
+                key, {"level": 0, "reset": None, "pred": False, "nigh": False})
+            ts0 = norm_epoch(rst)
+            if ts0 and st["reset"] and ts0 != st["reset"]:
+                st.update(level=0, pred=False, nigh=False)   # 进入新窗口期
+            if ts0:
+                st["reset"] = ts0
+            if pct < warn_at - 5:   # 用量明显回落（含新窗口清零）：解除预警
+                st["level"] = 0
+            prov_cn = "智谱" if prov == "zhipu" else "火山"
+            label = ("智谱 MCP 月额度" if nm == "MCP"
+                     else "%s %s窗口" % (prov_cn, nm))
+            if st["level"] < 1 and pct >= warn_at:
+                st["level"] = 1
+                self._notify(label, "已用 %d%%，接近额度上限" % round(pct))
+            elif st["level"] < 2 and pct >= crit_at:
+                st["level"] = 2
+                self._notify(label, "已用 %d%%，即将耗尽" % round(pct), warn=True)
+            if nm in PREDICT_WINDOWS and not st["pred"]:
+                calc = self._predict_calc(prov, nm, pct, rst)
+                if (calc and calc["reset_min"] is not None
+                        and calc["exhaust_min"] < calc["reset_min"]):
+                    st["pred"] = True
+                    self._notify(label,
+                                 "按当前烧速 %s后用尽，撑不到重置（重置还需 %s）"
+                                 % (fmt_duration(calc["exhaust_min"]),
+                                    fmt_duration(calc["reset_min"])), warn=True)
+            if nm == "5小时" and not st["nigh"] and ts0:
+                remain = ts0 - now
+                if 0 < remain <= 20 * 60 and pct >= warn_at:
+                    st["nigh"] = True
+                    self._notify(label, "%s后重置，坚持一下"
+                                 % fmt_duration(remain / 60.0))
+            self._notify_state[key] = st
+
+    def _notify(self, title, text, warn=False):
+        """Windows 系统通知；拿不到句柄或系统拒绝时静默放弃。"""
+        if not self._hwnd_cache:
+            self._hwnd_cache = widget_hwnd(self.root)
+        if self._hwnd_cache:
+            windows_notify(self._hwnd_cache, title, text, warn=warn)
 
     # ---------------- 绘制 ----------------
 
@@ -1756,10 +2164,16 @@ class UsageWidget:
                     wins = [("5小时", zd.get("five_hour"), None),
                             ("本周", zd.get("weekly"), None)]
                 for nm, pct, rst in wins[:2]:
-                    blocks.append({"t": "win",
-                                   "label": "5 小时窗口" if nm == "5小时" else "本周额度",
-                                   "pct": pct, "reset": rst, "used": "",
-                                   "h": win_h})
+                    blk = {"t": "win",
+                           "label": "5 小时窗口" if nm == "5小时" else "本周额度",
+                           "pct": pct, "reset": rst, "used": "",
+                           "h": win_h}
+                    pred = self._predict_text("zhipu", nm,
+                                              self._safe_pct(pct), rst)
+                    if pred:
+                        blk["pred"], blk["pred_c"] = pred
+                        blk["h"] += line_h
+                    blocks.append(blk)
                 mcp = zd.get("mcp")
                 if mcp:
                     blocks.append({
@@ -1791,11 +2205,17 @@ class UsageWidget:
             if vd.get("ok"):
                 for nm, used, quota, reset in (vd.get("windows") or [])[:3]:
                     pct = round(used * 100.0 / quota, 1) if quota else None
-                    blocks.append({"t": "win", "label": str(nm) + "额度",
-                                   "pct": pct, "reset": reset,
-                                   "used": "已用 %s / %s" % (
-                                       self._fmt_num(used), self._fmt_num(quota)),
-                                   "h": win_h})
+                    blk = {"t": "win", "label": str(nm) + "额度",
+                           "pct": pct, "reset": reset,
+                           "used": "已用 %s / %s" % (
+                               self._fmt_num(used), self._fmt_num(quota)),
+                           "h": win_h}
+                    pred = self._predict_text("volcano", nm,
+                                              self._safe_pct(pct), reset)
+                    if pred:
+                        blk["pred"], blk["pred_c"] = pred
+                        blk["h"] += line_h
+                    blocks.append(blk)
             else:
                 blocks.append({"t": "err", "h": line_h + int(4 * k),
                                "text": "⚠ " + (self.errors.get("volcano")
@@ -1898,6 +2318,11 @@ class UsageWidget:
                 c.create_text(pad, y + line_h / 2.0, text=seg or "—",
                               anchor="w", font=self.f_small, fill=self.t["dim"])
                 y += line_h
+                if b.get("pred"):
+                    c.create_text(pad, y + line_h / 2.0, text=b["pred"],
+                                  anchor="w", font=self.f_small,
+                                  fill=self.t.get(b["pred_c"], self.t["dim"]))
+                    y += line_h
                 if b.get("details"):
                     det_h = max(13, int(14 * k))
                     dtxt = " · ".join("%s %s" % (nm, self._fmt_num(uv))
