@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.5.1 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.5.2 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.5.2 更新：
+- 设置窗口视觉彻底重做（对齐 Win11 设置 / CustomTkinter 的设计语言）：
+  深色沉浸标题栏（DWM，修掉白标题栏配深色窗体的割裂感）、Win11 式
+  「标题+说明在左、控件在右」设置行、胶囊开关（Switch）替代复选框、
+  圆角主按钮；字体换 Segoe UI 系（中文自动回退雅黑）
+- 设置窗口可自由调整大小：内容自动换行拉伸、超高时鼠标滚轮滚动，
+  底部按钮始终固定可见
+- 设置窗口跟随悬浮窗的深/浅主题（浅色下整体切换浅色皮肤）
 
 v2.5.1 更新：
 - 设置窗口整体重做：深色卡片风格与悬浮窗统一，左侧分栏导航
@@ -83,7 +92,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.5.1"
+APP_VERSION = "2.5.2"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -902,28 +911,59 @@ FONT_FAMILY_CANDIDATES = ["Microsoft YaHei UI", "Microsoft YaHei",
 # 设置窗口
 # --------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# 设置窗口
+# --------------------------------------------------------------------------
+
+SETTINGS_SKINS = {
+    "dark": {
+        "S_BG": "#1a1b1f", "S_SIDE": "#1f2026", "S_SIDE_HI": "#2a2c34",
+        "S_CARD": "#232429", "S_LINE": "#303239",
+        "S_TEXT": "#eceef2", "S_DIM": "#b4bac2",
+        "S_INPUT": "#2b2d34", "S_INPUT_LINE": "#43464f",
+        "S_ACCENT": "#6f9dff", "S_ACCENT_HI": "#86b1ff",
+        "S_BTN_TEXT": "#10131a", "S_KNOB": "#ffffff",
+    },
+    "light": {
+        "S_BG": "#f5f6f8", "S_SIDE": "#ebedf0", "S_SIDE_HI": "#dfe2e8",
+        "S_CARD": "#ffffff", "S_LINE": "#e3e6ea",
+        "S_TEXT": "#1c1e23", "S_DIM": "#5d6470",
+        "S_INPUT": "#ffffff", "S_INPUT_LINE": "#c6cbd3",
+        "S_ACCENT": "#2c63e0", "S_ACCENT_HI": "#3d72ea",
+        "S_BTN_TEXT": "#ffffff", "S_KNOB": "#ffffff",
+    },
+}
+
+
+def apply_immersive_titlebar(hwnd, dark=True):
+    """让原生标题栏跟随深/浅色（Win10 1809+ DWMWA_USE_IMMERSIVE_DARK_MODE）。
+    深色窗体配白色标题栏是设置窗口此前观感突兀的主因。"""
+    if sys.platform != "win32" or not hwnd:
+        return
+    try:
+        import ctypes
+        val = ctypes.c_int(1 if dark else 0)
+        for attr in (20, 19):
+            if ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, attr, ctypes.byref(val), 4) == 0:
+                break
+    except Exception:
+        pass
+
+
 class SettingsDialog(tk.Toplevel):
-    """图形化设置（深色卡片 + 左侧分栏）：供应商密钥 / 显示与提醒。
-    全部用经典 tk 控件手绘样式，保证零依赖下也能有现代观感。"""
+    """设置窗口：跟随应用主题的卡片式布局，窗口可自由调整大小（内容滚动）。
+    视觉语言对齐 Win11 设置 / CustomTkinter：左说明右控件、开关（Switch）、
+    分段选择器、步进器、圆角主按钮、深色沉浸标题栏；
+    全部用经典 tk 控件手绘实现，保持零第三方依赖。"""
 
-    S_BG = "#17181d"        # 窗体背景（与悬浮窗一致）
-    S_SIDE = "#1d1e24"      # 侧栏
-    S_SIDE_HI = "#25272f"   # 侧栏高亮项 / 悬停
-    S_CARD = "#232429"      # 卡片
-    S_LINE = "#34363e"      # 描边 / 分隔
-    S_TEXT = "#e8eaed"
-    S_DIM = "#b0b6bd"       # 次要文字（比悬浮窗面板的 dim 更亮，保证小字号可读）
-    S_INPUT = "#2a2c33"     # 输入底色
-    S_INPUT_LINE = "#3f424b"
-    S_ACCENT = "#7aa2ff"    # 主色（智谱蓝）
-    S_ACCENT_HI = "#8fb0ff"
-    S_BTN_TEXT = "#14161c"  # 主按钮文字
-
-    def __init__(self, master, cfg, on_apply, on_autostart):
+    def __init__(self, master, cfg, on_apply, on_autostart, skin="dark"):
         super().__init__(master)
+        for k, v in SETTINGS_SKINS.get(skin, SETTINGS_SKINS["dark"]).items():
+            setattr(self, k, v)
+        self.is_dark = skin != "light"
         self.title("设置 - " + APP_NAME)
         self.configure(bg=self.S_BG)
-        self.resizable(False, False)
         self.transient(master)
         self.on_apply = on_apply
         self.on_autostart = on_autostart  # (enable_cb, disable_cb)
@@ -931,15 +971,18 @@ class SettingsDialog(tk.Toplevel):
         zcfg = cfg.get("zhipu", {})
         vcfg = cfg.get("volcano", {})
 
+        # ---- 字体：Segoe UI 系（数字/英文更精致），中文自动回退雅黑 ----
         try:
-            fam = tkfont.nametofont("TkDefaultFont").actual("family")
+            fams = set(tkfont.families(self))
         except Exception:
-            fam = "TkDefaultFont"
-        self.f_page = tkfont.Font(family=fam, size=12, weight="bold")
-        self.f_title = tkfont.Font(family=fam, size=10, weight="bold")
+            fams = set()
+        fam = next((f for f in ("Segoe UI Variable Text", "Segoe UI",
+                                "Microsoft YaHei UI", "Microsoft YaHei")
+                    if f in fams), "TkDefaultFont")
+        self.f_page = tkfont.Font(family=fam, size=13, weight="bold")
+        self.f_card = tkfont.Font(family=fam, size=10, weight="bold")
         self.f_label = tkfont.Font(family=fam, size=9)
         self.f_hint = tkfont.Font(family=fam, size=8)
-        # 高分屏下把固定像素尺寸（侧栏宽、滑杆长）按 tk 缩放系数放大
         try:
             factor = float(self.tk.call("tk", "scaling")) / (96.0 / 72.0)
         except Exception:
@@ -974,44 +1017,145 @@ class SettingsDialog(tk.Toplevel):
         self.crit = tk.IntVar(value=int(cfg.get("critical_percent", 95)))
         self.notify_en = tk.BooleanVar(value=bool(cfg.get("notify", True)))
 
-        # ---- 布局：左侧导航 + 右侧页面 + 底部按钮 ----
+        # ---- 布局：底部按钮固定 + 左侧导航 + 右侧可滚动内容 ----
         self._pages = {}
         self._nav = {}
         self._segs = []
         self._active_page = ""
 
+        self._build_footer()
         body = tk.Frame(self, bg=self.S_BG)
         body.pack(fill="both", expand=True)
-        side = tk.Frame(body, bg=self.S_SIDE, width=self._sx(148))
+        side = tk.Frame(body, bg=self.S_SIDE, width=self._sx(176))
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
-        content = tk.Frame(body, bg=self.S_BG)
-        content.pack(side="left", fill="both", expand=True,
-                     padx=self._sx(20), pady=self._sx(14))
+        main = tk.Frame(body, bg=self.S_BG)
+        main.pack(side="left", fill="both", expand=True)
+
+        self._scroll = tk.Canvas(main, bg=self.S_BG, highlightthickness=0, bd=0)
+        self._scroll.pack(side="left", fill="both", expand=True)
+        self._scroll.configure(yscrollincrement=self._sx(20))
+        self._host = tk.Frame(self._scroll, bg=self.S_BG)
+        self._scroll_item = self._scroll.create_window(
+            (0, 0), window=self._host, anchor="nw")
+        self._host.bind("<Configure>", self._on_host_configure)
+        self._scroll.bind("<Configure>", self._on_scroll_resize)
+        self._scroll.bind_all("<MouseWheel>", self._on_wheel, add="+")
 
         self._build_sidebar(side)
-        self._build_providers_page(content)
-        self._build_display_page(content)
+        self._build_providers_page()
+        self._build_display_page()
         self._refresh_segs()
-        self._footer()
         self._show_page("providers")
 
-        # 屏幕居中弹出
+        # 尺寸：默认自然大小（可改），居中，随后放开可缩放
         self.update_idletasks()
-        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        w = self.winfo_reqwidth()
+        h = min(self.winfo_reqheight(), int(self.winfo_screenheight() * 0.88))
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry("+%d+%d" % (max(0, (sw - w) // 2), max(0, (sh - h) // 2)))
+        self.geometry("%dx%d+%d+%d" % (
+            w, h, max(0, (sw - w) // 2), max(0, (sh - h) // 2)))
+        self.resizable(True, True)
+        self.minsize(min(w, self._sx(500)), self._sx(300))
+        self.update_idletasks()
+        apply_immersive_titlebar(widget_hwnd(self), dark=self.is_dark)
         self.grab_set()
         self.focus_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        self.bind("<Escape>", lambda e: self._close())
+
+    # ---------------- 通用绘制 ----------------
+
+    def _rrect(self, cv, x0, y0, x1, y1, r, **kw):
+        pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r,
+               x1, y1 - r, x1, y1, x1 - r, y1,
+               x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
+        return cv.create_polygon(pts, smooth=True, **kw)
+
+    def _switch(self, parent, var):
+        """Win11 风格开关：胶囊轨道 + 圆形滑块，点击切换。"""
+        h = self._sx(22)
+        pad = self._sx(2)
+        w = self._sx(42)
+        cv = tk.Canvas(parent, width=w, height=h, bg=parent.cget("bg"),
+                       highlightthickness=0, cursor="hand2")
+
+        def draw():
+            cv.delete("all")
+            on = bool(var.get())
+            y0, y1 = pad, h - pad
+            d = y1 - y0
+            self._rrect(cv, pad, y0, w - pad, y1, d / 2.0,
+                        fill=self.S_ACCENT if on else self.S_INPUT_LINE)
+            kx = (w - pad - d) if on else pad
+            cv.create_oval(kx, y0, kx + d, y1,
+                           fill=self.S_KNOB, outline="")
+        cv.bind("<Button-1>", lambda e: var.set(not var.get()))
+        try:
+            var.trace_add("write", lambda *_a: draw())
+        except Exception:
+            pass
+        draw()
+        return cv
+
+    def _pill_button(self, parent, text, cmd, primary=False):
+        """圆角按钮（画布绘制）：primary 为品牌蓝主按钮，否则为幽灵按钮。"""
+        f = self.f_label
+        tw = f.measure(text)
+        h = self._sx(32)
+        w = tw + self._sx(34)
+        cv = tk.Canvas(parent, width=w, height=h, bg=parent.cget("bg"),
+                       highlightthickness=0, cursor="hand2")
+        normal = self.S_ACCENT if primary else self.S_INPUT
+        hover = self.S_ACCENT_HI if primary else self.S_INPUT_LINE
+        fg = self.S_BTN_TEXT if primary else self.S_TEXT
+
+        def draw(bg):
+            cv.delete("all")
+            self._rrect(cv, 1, 1, w - 1, h - 1, (h - 2) / 2.0, fill=bg)
+            cv.create_text(w / 2.0, h / 2.0, text=text, font=f, fill=fg)
+        draw(normal)
+        cv.bind("<Enter>", lambda e: draw(hover))
+        cv.bind("<Leave>", lambda e: draw(normal))
+        cv.bind("<Button-1>", lambda e: draw(hover))
+        cv.bind("<ButtonRelease-1>", lambda e: (draw(hover), cmd()))
+        return cv
+
+    def _mini_btn(self, parent, text, cmd):
+        b = tk.Button(parent, text=text, command=cmd, relief="flat",
+                      bg=self.S_INPUT, fg=self.S_TEXT, font=self.f_hint,
+                      activebackground=self.S_INPUT_LINE,
+                      activeforeground=self.S_TEXT, borderwidth=0,
+                      highlightthickness=0, cursor="hand2",
+                      padx=self._sx(10), pady=self._sx(4))
+        return b
+
+    # ---------------- 滚动与关闭 ----------------
+
+    def _on_host_configure(self, _e):
+        self._scroll.configure(scrollregion=self._scroll.bbox("all"))
+
+    def _on_scroll_resize(self, e):
+        self._scroll.itemconfigure(self._scroll_item, width=e.width)
+
+    def _on_wheel(self, e):
+        if not self.winfo_exists():
+            return
+        self._scroll.yview_scroll(int(-e.delta / 120) * 3, "units")
+
+    def _close(self):
+        try:
+            self.unbind_all("<MouseWheel>")
+        except Exception:
+            pass
+        self.destroy()
 
     # ---------------- 侧栏导航 ----------------
 
     def _build_sidebar(self, parent):
         head = tk.Frame(parent, bg=self.S_SIDE)
-        head.pack(fill="x", padx=self._sx(14), pady=(self._sx(16), self._sx(14)))
+        head.pack(fill="x", padx=self._sx(16), pady=(self._sx(18), self._sx(16)))
         tk.Label(head, text=APP_NAME, bg=self.S_SIDE, fg=self.S_TEXT,
-                 font=self.f_title, anchor="w").pack(fill="x")
+                 font=self.f_card, anchor="w").pack(fill="x")
         tk.Label(head, text="v" + APP_VERSION, bg=self.S_SIDE, fg=self.S_DIM,
                  font=self.f_hint, anchor="w").pack(fill="x")
         self._nav_item(parent, "providers", "供应商密钥")
@@ -1024,7 +1168,7 @@ class SettingsDialog(tk.Toplevel):
         bar.pack(side="left", fill="y")
         lbl = tk.Label(item, text=text, bg=self.S_SIDE, fg=self.S_DIM,
                        font=self.f_label, anchor="w",
-                       padx=self._sx(12), pady=self._sx(9))
+                       padx=self._sx(12), pady=self._sx(10))
         lbl.pack(side="left", fill="x", expand=True)
         self._nav[key] = {"item": item, "bar": bar, "lbl": lbl}
         for w in (item, bar, lbl):
@@ -1045,6 +1189,7 @@ class SettingsDialog(tk.Toplevel):
         for k, page in self._pages.items():
             page.pack_forget()
         self._pages[key].pack(fill="both", expand=True)
+        self._scroll.yview_moveto(0.0)
         for k, st in self._nav.items():
             active = (k == key)
             bg = self.S_SIDE_HI if active else self.S_SIDE
@@ -1054,77 +1199,67 @@ class SettingsDialog(tk.Toplevel):
 
     # ---------------- 页面与卡片 ----------------
 
-    def _new_page(self, content, key, title, subtitle):
-        page = tk.Frame(content, bg=self.S_BG)
+    def _new_page(self, key, title, subtitle):
+        page = tk.Frame(self._host, bg=self.S_BG)
         tk.Label(page, text=title, bg=self.S_BG, fg=self.S_TEXT,
-                 font=self.f_page, anchor="w").pack(fill="x")
+                 font=self.f_page, anchor="w").pack(
+            fill="x", padx=self._sx(22), pady=(self._sx(18), 0))
         tk.Label(page, text=subtitle, bg=self.S_BG, fg=self.S_DIM,
-                 font=self.f_hint, anchor="w").pack(fill="x",
-                                                   pady=(2, self._sx(12)))
+                 font=self.f_hint, anchor="w", justify="left").pack(
+            fill="x", padx=self._sx(22), pady=(2, self._sx(14)))
         self._pages[key] = page
         return page
 
-    def _card(self, parent):
+    def _card(self, parent, title=None, accent=None, enable_var=None, desc=None):
         card = tk.Frame(parent, bg=self.S_CARD,
                         highlightbackground=self.S_LINE, highlightthickness=1)
-        card.pack(fill="x")
+        card.pack(fill="x", padx=self._sx(22), pady=(0, self._sx(14)))
+        if title:
+            head = tk.Frame(card, bg=self.S_CARD)
+            head.pack(fill="x", padx=self._sx(16),
+                      pady=(self._sx(14), 0 if desc else self._sx(4)))
+            dot = tk.Canvas(head, width=10, height=10, bg=self.S_CARD,
+                            highlightthickness=0)
+            dot.create_oval(1, 1, 9, 9, fill=accent or self.S_ACCENT,
+                            outline="")
+            dot.pack(side="left")
+            tk.Label(head, text=title, bg=self.S_CARD, fg=self.S_TEXT,
+                     font=self.f_card).pack(side="left", padx=(self._sx(8), 0))
+            if enable_var is not None:
+                self._switch(head, enable_var).pack(side="right")
+            if desc:
+                tk.Label(card, text=desc, bg=self.S_CARD, fg=self.S_DIM,
+                         font=self.f_hint, anchor="w", justify="left").pack(
+                    fill="x", padx=self._sx(16), pady=(3, self._sx(2)))
         return card
-
-    def _card_head(self, card, title, accent, enable_var):
-        head = tk.Frame(card, bg=self.S_CARD)
-        head.pack(fill="x", padx=self._sx(14),
-                  pady=(self._sx(12), self._sx(8)))
-        dot = tk.Canvas(head, width=10, height=10, bg=self.S_CARD,
-                        highlightthickness=0)
-        dot.create_oval(1, 1, 9, 9, fill=accent, outline="")
-        dot.pack(side="left")
-        tk.Label(head, text=title, bg=self.S_CARD, fg=self.S_TEXT,
-                 font=self.f_title).pack(side="left", padx=(self._sx(8), 0))
-        tk.Label(head, text="启用", bg=self.S_CARD, fg=self.S_DIM,
-                 font=self.f_hint).pack(side="right", padx=(self._sx(6), 0))
-        self._check(head, "", enable_var).pack(side="right")
 
     # ---------------- 行构造辅助 ----------------
 
-    def _row(self, card, bottom=8):
+    def _setting_row(self, card, title, desc=None, bottom=12):
+        """Win11 设置风格：标题(+说明)在左，控件容器在右。"""
         row = tk.Frame(card, bg=self.S_CARD)
-        row.pack(fill="x", padx=self._sx(14),
-                 pady=(0, self._sx(bottom)))
-        return row
+        row.pack(fill="x", padx=self._sx(16),
+                 pady=(self._sx(6), self._sx(bottom)))
+        left = tk.Frame(row, bg=self.S_CARD)
+        left.pack(side="left", fill="x", expand=True)
+        tk.Label(left, text=title, bg=self.S_CARD, fg=self.S_TEXT,
+                 font=self.f_label, anchor="w", justify="left").pack(anchor="w")
+        if desc:
+            tk.Label(left, text=desc, bg=self.S_CARD, fg=self.S_DIM,
+                     font=self.f_hint, anchor="w", justify="left",
+                     wraplength=self._sx(300)).pack(anchor="w", pady=(1, 0))
+        right = tk.Frame(row, bg=self.S_CARD)
+        right.pack(side="right", padx=(self._sx(12), 0))
+        return right
 
-    def _row_label(self, row, text):
-        tk.Label(row, text=text, bg=self.S_CARD, fg=self.S_DIM,
-                 font=self.f_label, width=13, anchor="w").pack(side="left")
-
-    def _row_hint(self, card, text):
-        tk.Label(card, text=text, bg=self.S_CARD, fg=self.S_DIM,
-                 font=self.f_hint, anchor="w").pack(
-            fill="x", padx=self._sx(14), pady=(0, self._sx(8)))
-
-    def _check(self, parent, text, var):
-        bg = parent.cget("bg")
-        return tk.Checkbutton(parent, text=text, variable=var, bg=bg,
-                              fg=self.S_TEXT, activebackground=bg,
-                              activeforeground=self.S_TEXT,
-                              selectcolor=self.S_INPUT, font=self.f_label,
-                              anchor="w", cursor="hand2", bd=0,
-                              highlightthickness=0)
-
-    def _mini_btn(self, parent, text, cmd):
-        b = tk.Button(parent, text=text, command=cmd, relief="flat",
-                      bg=self.S_INPUT, fg=self.S_TEXT, font=self.f_hint,
-                      activebackground=self.S_INPUT_LINE,
-                      activeforeground=self.S_TEXT, borderwidth=0,
-                      highlightthickness=0, cursor="hand2",
-                      padx=self._sx(10), pady=self._sx(4))
-        return b
-
-    def _field(self, card, label, var, hint=None, secret=False, bottom=6):
+    def _field(self, card, label, var, hint=None, secret=False, bottom=8):
+        """供应商密钥等表单行：标签列 + 填满的输入框。"""
         wrap = tk.Frame(card, bg=self.S_CARD)
-        wrap.pack(fill="x", padx=self._sx(14), pady=(0, self._sx(bottom)))
+        wrap.pack(fill="x", padx=self._sx(16), pady=(0, self._sx(bottom)))
         row = tk.Frame(wrap, bg=self.S_CARD)
         row.pack(fill="x")
-        self._row_label(row, label)
+        tk.Label(row, text=label, bg=self.S_CARD, fg=self.S_DIM,
+                 font=self.f_label, width=13, anchor="w").pack(side="left")
         e = tk.Entry(row, textvariable=var, bg=self.S_INPUT, fg=self.S_TEXT,
                      insertbackground=self.S_TEXT, relief="flat", bd=0,
                      highlightthickness=1,
@@ -1144,17 +1279,15 @@ class SettingsDialog(tk.Toplevel):
             btn.config(command=_toggle)
             btn.pack(side="left", padx=(6, 0))
         if hint:
-            self._row_hint(wrap, hint)
+            tk.Label(wrap, text=hint, bg=self.S_CARD, fg=self.S_DIM,
+                     font=self.f_hint, anchor="w").pack(fill="x", pady=(3, 0))
         return e
 
-    def _row_stepper(self, card, label, var, lo, hi, step, unit="",
-                     hint=None, bottom=8):
-        row = self._row(card, bottom=(4 if hint else bottom))
-        self._row_label(row, label)
-        ctl = tk.Frame(row, bg=self.S_LINE)
-        ctl.pack(side="left", padx=(4, 8))
-        val = tk.Label(ctl, textvariable=var, width=5, bg=self.S_CARD,
-                       fg=self.S_TEXT, font=self.f_title)
+    def _row_stepper(self, right, var, lo, hi, step=1, unit=""):
+        ctl = tk.Frame(right, bg=self.S_CARD)
+        ctl.pack()
+        val = tk.Label(ctl, textvariable=var, width=5, bg=self.S_INPUT,
+                       fg=self.S_TEXT, font=self.f_card)
         for delta, glyph in ((-step, "−"), (step, "+")):
             def _click(d=delta):
                 try:
@@ -1162,37 +1295,31 @@ class SettingsDialog(tk.Toplevel):
                 except Exception:
                     v = lo
                 var.set(min(hi, max(lo, v)))
-            b = tk.Label(ctl, text=glyph, width=2, bg=self.S_INPUT,
-                         fg=self.S_TEXT, font=self.f_title, cursor="hand2")
+            b = tk.Label(ctl, text=glyph, width=2, bg=self.S_CARD,
+                         fg=self.S_DIM, font=self.f_card, cursor="hand2")
             b.bind("<Button-1>", lambda e: _click())
-            b.bind("<Enter>", lambda e, w=b: w.config(bg=self.S_INPUT_LINE))
-            b.bind("<Leave>", lambda e, w=b: w.config(bg=self.S_INPUT))
+            b.bind("<Enter>", lambda e, w=b: w.config(fg=self.S_TEXT))
+            b.bind("<Leave>", lambda e, w=b: w.config(fg=self.S_DIM))
             if delta < 0:
-                b.pack(side="left", padx=(1, 0), pady=1)
-                val.pack(side="left", padx=1, pady=1)
+                b.pack(side="left")
+                val.pack(side="left", padx=1, ipady=3)
             else:
-                b.pack(side="left", padx=(0, 1), pady=1)
+                b.pack(side="left")
         if unit:
-            tk.Label(row, text=unit, bg=self.S_CARD, fg=self.S_DIM,
-                     font=self.f_hint).pack(side="left")
-        if hint:
-            self._row_hint(card, hint)
+            tk.Label(right, text=unit, bg=self.S_CARD, fg=self.S_DIM,
+                     font=self.f_hint).pack(side="left", padx=(6, 0))
 
-    def _row_segmented(self, card, label, options, var, hint=None, bottom=8):
-        row = self._row(card, bottom=(4 if hint else bottom))
-        self._row_label(row, label)
-        track = tk.Frame(row, bg=self.S_LINE)
-        track.pack(side="left", padx=(4, 0), pady=1)
+    def _row_segmented(self, right, options, var):
+        track = tk.Frame(right, bg=self.S_LINE)
+        track.pack(pady=1)
         for text, value in options:
             seg = tk.Label(track, text=text, bg=self.S_LINE, fg=self.S_DIM,
-                           font=self.f_label, padx=self._sx(10),
+                           font=self.f_hint, padx=self._sx(7),
                            pady=self._sx(4), cursor="hand2")
             seg.pack(side="left", padx=1, pady=1)
             seg.bind("<Button-1>",
                      lambda e, v=value: (var.set(v), self._refresh_segs()))
             self._segs.append((seg, var, value))
-        if hint:
-            self._row_hint(card, hint)
 
     def _refresh_segs(self):
         for seg, var, value in self._segs:
@@ -1200,105 +1327,94 @@ class SettingsDialog(tk.Toplevel):
             seg.config(bg=self.S_CARD if active else self.S_LINE,
                        fg=self.S_TEXT if active else self.S_DIM)
 
-    def _row_slider(self, card, label, var, lo, hi):
-        row = self._row(card)
-        self._row_label(row, label)
-        sc = tk.Scale(row, from_=lo, to=hi, orient="horizontal",
-                      variable=var, bg=self.S_CARD, fg=self.S_DIM,
-                      troughcolor=self.S_INPUT, highlightthickness=0,
-                      length=self._sx(190), showvalue=True, resolution=1,
-                      relief="flat", sliderrelief="flat", width=self._sx(10),
-                      activebackground=self.S_ACCENT, font=self.f_hint, bd=0)
-        sc.pack(side="left", padx=(4, 0))
+    def _check(self, parent, text, var):
+        bg = parent.cget("bg")
+        return tk.Checkbutton(parent, text=text, variable=var, bg=bg,
+                              fg=self.S_TEXT, activebackground=bg,
+                              activeforeground=self.S_TEXT,
+                              selectcolor=self.S_INPUT, font=self.f_hint,
+                              anchor="w", cursor="hand2", bd=0,
+                              highlightthickness=0)
 
     # ---------------- 两个页面 ----------------
 
-    def _build_providers_page(self, content):
-        page = self._new_page(content, "providers", "供应商密钥",
+    def _build_providers_page(self):
+        page = self._new_page("providers", "供应商密钥",
                               "密钥只保存在本机 config.json，不经过任何第三方服务器")
-        card = self._card(page)
-        page.grid_columnconfigure(0, weight=1)
-        card.grid_columnconfigure(0, weight=1)
-        self._card_head(card, "智谱 Coding Plan", C_ACCENT_Z, self.z_en)
+        card = self._card(page, "智谱 Coding Plan", C_ACCENT_Z, self.z_en)
         self._field(card, "API Key", self.z_key, secret=True,
                     hint="智谱开放平台 → API Keys 页面")
         self._field(card, "接口地址", self.z_base,
                     hint="国际版填 api.z.ai，一般不用改")
-        days = self._row(card, bottom=12)
+        row = tk.Frame(card, bg=self.S_CARD)
+        row.pack(fill="x", padx=self._sx(16), pady=(0, self._sx(14)))
         for text, var in (("近 30 天用量", self.z_30d),
                           ("近 15 天用量", self.z_15d),
                           ("近 7 天用量", self.z_7d)):
-            self._check(days, text, var).pack(side="left",
+            self._check(row, text, var).pack(side="left",
                                               padx=(0, self._sx(12)))
-        tk.Frame(page, bg=self.S_BG, height=self._sx(12)).pack(fill="x")
-        card = self._card(page)
-        card.grid_columnconfigure(0, weight=1)
-        self._card_head(card, "火山引擎 Agent Plan", C_ACCENT_V, self.v_en)
+        card = self._card(page, "火山引擎 Agent Plan", C_ACCENT_V, self.v_en)
         self._field(card, "AccessKey ID", self.v_ak,
                     hint="控制台 → API 访问密钥（AKLT 开头）")
         self._field(card, "SecretAccessKey", self.v_sk, secret=True,
                     hint="账号级密钥，非方舟模型 Key")
         self._field(card, "地域", self.v_region,
-                    hint="一般是 cn-beijing", bottom=12)
+                    hint="一般是 cn-beijing", bottom=14)
 
-    def _build_display_page(self, content):
-        page = self._new_page(content, "display", "显示与提醒",
+    def _build_display_page(self):
+        page = self._new_page("display", "显示与提醒",
                               "外观与刷新行为，保存后立即生效")
-        page.grid_columnconfigure(0, weight=1)
-        card = self._card(page)
-        card.grid_columnconfigure(0, weight=1)
-        self._row_segmented(card, "配色主题",
-                            (("自动", "auto"), ("深色", "dark"), ("浅色", "light")),
-                            self.theme_choice,
-                            hint="自动模式会感应窗口背后的背景明暗")
-        row = self._row(card)
-        self._row_label(row, "贴边收起")
-        self._check(row, "拖到屏幕边缘自动收起，留进度小条，鼠标移上去弹出",
-                    self.edge_dock).pack(side="left")
-        self._row_stepper(card, "长条长度", self.dock_len, 40, 240, 10,
-                          "px（贴边小条的长度）")
-        self._row_segmented(card, "界面缩放",
-                            tuple((SCALE_SHORT[s], s) for s in SCALE_STEPS),
-                            self.scale_var,
-                            hint="觉得浮窗太大/太小就调这里")
-        self._row_slider(card, "窗口透明度", self.opacity, 60, 100)
-        self._row_stepper(card, "自动刷新间隔", self.refresh, 1, 120, 1,
-                          "分钟", bottom=12)
+        card = self._card(page, "外观")
+        right = self._setting_row(card, "配色主题",
+                                  "自动模式会感应窗口背后的背景明暗")
+        self._row_segmented(right, (("自动", "auto"), ("深色", "dark"),
+                                    ("浅色", "light")), self.theme_choice)
+        right = self._setting_row(card, "界面缩放",
+                                  "觉得悬浮窗太大/太小就调这里")
+        self._row_segmented(right, tuple((SCALE_SHORT[s], s)
+                                         for s in SCALE_STEPS), self.scale_var)
+        right = self._setting_row(card, "窗口透明度", "60% ～ 100%")
+        self._row_stepper(right, self.opacity, 60, 100, 1, "%")
+        right = self._setting_row(card, "贴边收起",
+                                  "拖到屏幕边缘自动收起，留进度小条，鼠标移上去弹出",
+                                  bottom=14)
+        self._switch(right, self.edge_dock)
 
-        tk.Frame(page, bg=self.S_BG, height=self._sx(12)).pack(fill="x")
-        card = self._card(page)
-        card.grid_columnconfigure(0, weight=1)
-        self._row_stepper(card, "黄色提醒阈值", self.warn, 10, 98, 1, "%")
-        self._row_stepper(card, "红色临界阈值", self.crit, 11, 99, 1, "%")
-        row = self._row(card)
-        self._row_label(row, "系统通知")
-        self._check(row, "跨阈值 / 烧速预测 / 临近重置时弹 Windows 通知",
-                    self.notify_en).pack(side="left")
-        row = self._row(card, bottom=12)
-        self._row_label(row, "开机自启")
-        self._mini_btn(row, "设置", self.on_autostart[0]).pack(
-            side="left", padx=(4, 6))
-        self._mini_btn(row, "取消", self.on_autostart[1]).pack(side="left")
+        card = self._card(page, "行为")
+        right = self._setting_row(card, "长条长度",
+                                  "贴边收起小条的长度（40 ～ 240px）")
+        self._row_stepper(right, self.dock_len, 40, 240, 10, "px")
+        right = self._setting_row(card, "自动刷新间隔", None)
+        self._row_stepper(right, self.refresh, 1, 120, 1, "分钟")
+        right = self._setting_row(card, "黄色提醒阈值", None)
+        self._row_stepper(right, self.warn, 10, 98, 1, "%")
+        right = self._setting_row(card, "红色临界阈值", None)
+        self._row_stepper(right, self.crit, 11, 99, 1, "%")
+        right = self._setting_row(card, "系统通知",
+                                  "跨阈值 / 烧速预测 / 临近重置时弹 Windows 通知",
+                                  bottom=14)
+        self._switch(right, self.notify_en)
+
+        card = self._card(page, "开机自启",
+                          desc="登录 Windows 后自动启动悬浮窗")
+        row = tk.Frame(card, bg=self.S_CARD)
+        row.pack(fill="x", padx=self._sx(16), pady=(self._sx(6), self._sx(14)))
+        self._mini_btn(row, "设置自启", self.on_autostart[0]).pack(side="left")
+        self._mini_btn(row, "取消自启", self.on_autostart[1]).pack(
+            side="left", padx=(8, 0))
 
     # ---------------- 底部按钮 ----------------
 
-    def _footer(self):
-        tk.Frame(self, bg=self.S_LINE, height=1).pack(fill="x",
-                                                      padx=self._sx(18))
+    def _build_footer(self):
         bar = tk.Frame(self, bg=self.S_BG)
-        bar.pack(fill="x", padx=self._sx(18),
-                 pady=(self._sx(12), self._sx(16)))
-        cancel = self._mini_btn(bar, "取消", self.destroy)
-        cancel.config(font=self.f_label, padx=self._sx(14),
-                      pady=self._sx(6))
-        cancel.pack(side="right")
-        save = tk.Button(bar, text="保存并应用", command=self._save,
-                         relief="flat", bg=self.S_ACCENT, fg=self.S_BTN_TEXT,
-                         activebackground=self.S_ACCENT_HI,
-                         activeforeground=self.S_BTN_TEXT, font=self.f_label,
-                         borderwidth=0, highlightthickness=0, cursor="hand2",
-                         padx=self._sx(18), pady=self._sx(6))
-        save.pack(side="right", padx=(0, self._sx(10)))
+        bar.pack(side="bottom", fill="x")
+        tk.Frame(bar, bg=self.S_LINE, height=1).pack(fill="x")
+        btns = tk.Frame(bar, bg=self.S_BG)
+        btns.pack(fill="x", side="right", padx=self._sx(18),
+                  pady=self._sx(12))
+        self._pill_button(btns, "取消", self._close).pack(side="right")
+        self._pill_button(btns, "保存并应用", self._save,
+                          primary=True).pack(side="right", padx=(0, self._sx(10)))
 
     # ---------------- 保存 ----------------
 
@@ -1333,8 +1449,8 @@ class SettingsDialog(tk.Toplevel):
             "critical_percent": crit,
             "notify": bool(self.notify_en.get()),
         }
+        self._close()
         self.on_apply(patch)
-        self.destroy()
 
 
 # --------------------------------------------------------------------------
@@ -1954,7 +2070,8 @@ class UsageWidget:
             pass
         self._settings_open = SettingsDialog(
             self.root, self.cfg, self.apply_settings,
-            (self.enable_autostart, self.disable_autostart))
+            (self.enable_autostart, self.disable_autostart),
+            skin=self.theme_eff)
 
     def apply_settings(self, patch):
         save_config_patch(patch)             # 增量写盘
