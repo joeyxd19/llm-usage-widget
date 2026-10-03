@@ -38,8 +38,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 安装 PyInstaller
-        run: pip install pyinstaller
+      - name: 安装依赖
+        run: pip install pyinstaller customtkinter
 
       - name: 打包单文件 EXE
         shell: bash
@@ -48,6 +48,7 @@ jobs:
         run: |
           VERSION="${TAG#v}"
           pyinstaller --onefile --noconsole --clean \
+            --collect-all customtkinter \
             --name "llm-usage-widget_v${VERSION}" \
             src/usage_widget.pyw
 

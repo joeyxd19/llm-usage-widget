@@ -22,7 +22,7 @@ EXE 由 PyInstaller 打包，内嵌完整 Python 运行环境；密钥只保存�
 - **配色主题**：深色 / 浅色 / 自动跟随背景明暗
 - **额度预警**：绿（正常）/ 黄（偏高）/ 红（临界）三档变色，阈值可调
 - **高分屏适配**：DPI 感知渲染 + 界面缩放（75%~130%）+ 透明度可调
-- **轻量常驻**：单文件 Python（仅标准库，零第三方依赖）；开机自启、单实例保护；亦可打包为免安装 EXE
+- **轻量常驻**：单文件 Python（悬浮窗本体仅标准库；设置窗口可选启用 customtkinter 获得现代控件，未安装自动回退）；开机自启、单实例保护；亦可打包为免安装 EXE
 
 ## 快速开始
 
@@ -30,9 +30,10 @@ EXE 由 PyInstaller 打包，内嵌完整 Python 运行环境；密钥只保存�
 
 见上文「直接下载使用」，或直接打开 [Releases 页面](https://github.com/joeyxd19/llm-usage-widget/releases)。
 
-**方式二：运行源码**（需 Python 3.10+，自带 tkinter，无第三方依赖）
+**方式二：运行源码**（需 Python 3.10+，自带 tkinter；可选装 customtkinter 启用新版设置窗口）
 
 ```bash
+pip install customtkinter   # 可选：不装则自动回退经典样式设置窗口
 python src/usage_widget.pyw
 ```
 
@@ -43,7 +44,8 @@ python src/usage_widget.pyw
 **打包 EXE**（PyInstaller）：
 
 ```bash
-pyinstaller --onefile --windowed --name 额度悬浮窗 --distpath release --workpath build --specpath build src/usage_widget.pyw
+pip install pyinstaller customtkinter
+pyinstaller --onefile --windowed --collect-all customtkinter --name 额度悬浮窗 --distpath release --workpath build --specpath build src/usage_widget.pyw
 ```
 
 首次运行会弹出设置窗口，填入密钥即可：
