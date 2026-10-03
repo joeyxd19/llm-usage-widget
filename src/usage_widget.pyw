@@ -99,7 +99,7 @@ except Exception:
     CTK_AVAILABLE = False
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.5.5"
+APP_VERSION = "2.5.6"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -1079,8 +1079,8 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         self._build_display_page()
         self._show_page("providers")
 
-        # ---- 尺寸：按页面内容实际高度开窗（上限屏高 88%），超出窗口内滚动 ----
-        # CTkScrollableFrame 的自然高度同样不含内容，需量页面再除回窗口缩放
+        # ---- 尺寸：舒适默认高度（约 600 逻辑像素，与常见设置窗口一致），
+        # 内容超出时窗口内滚动，不再按内容撑满全屏 ----
         self.update_idletasks()
         content_h = max(p.winfo_reqheight() for p in self._pages.values())
         try:
@@ -1088,7 +1088,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         except Exception:
             win_scale = 1.0
         w = max(760, self.winfo_reqwidth())
-        h = min(int((content_h + 80) / win_scale),
+        h = min(int((content_h + 80) / win_scale), 600,
                 int(self.winfo_screenheight() * 0.88 / win_scale))
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry("%dx%d+%d+%d" % (
@@ -1469,12 +1469,12 @@ class SettingsDialog(tk.Toplevel):
         self._refresh_segs()
         self._show_page("providers")
 
-        # 尺寸：按页面内容实际高度开窗（上限屏高 88%），超出部分在窗口内滚动。
+        # 尺寸：舒适默认高度（约 600 逻辑像素），内容超出时窗口内滚动。
         # 内容挂在滚动 Canvas 里，Canvas 的自然高度不包含内容，必须手动量页面。
         self.update_idletasks()
         content_h = max(p.winfo_reqheight() for p in self._pages.values())
         w = max(self._sx(620), self.winfo_reqwidth())
-        h = min(content_h + self._sx(70),
+        h = min(content_h + self._sx(70), self._sx(600),
                 int(self.winfo_screenheight() * 0.88))
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry("%dx%d+%d+%d" % (
