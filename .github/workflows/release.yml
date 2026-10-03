@@ -23,10 +23,15 @@ jobs:
         shell: bash
         run: |
           if [ -n "${{ github.event.inputs.tag }}" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ github.event.inputs.tag }}"
           else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            TAG="${GITHUB_REF_NAME}"
           fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::非法 tag「$TAG」：需形如 v2.6.0（手动触发时请填写 tag 输入，留空会误用分支名）"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: 检出代码
         uses: actions/checkout@v4
@@ -39,7 +44,7 @@ jobs:
           python-version: "3.12"
 
       - name: 安装依赖
-        run: pip install pyinstaller customtkinter
+        run: pip install pyinstaller==6.22.3 customtkinter==6.0.0
 
       - name: 打包单文件 EXE
         shell: bash

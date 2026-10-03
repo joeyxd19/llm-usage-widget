@@ -77,6 +77,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     import tkinter as tk
@@ -99,7 +100,7 @@ except Exception:
     CTK_AVAILABLE = False
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.5.9"
+APP_VERSION = "2.6.0"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -722,15 +723,22 @@ def fetch_zhipu(zcfg):
                          "reset_ms": mcp.get("nextResetTime"),
                          "details": details}
 
-    # 近 N 天 token 用量：独立接口，失败静默降级，不影响主数据展示
-    for days_key, days_val, flag in (("thirty_day", 30, "show_30d"),
-                                     ("fifteen_day", 15, "show_15d"),
-                                     ("seven_day", 7, "show_7d")):
-        if zcfg.get(flag, True):
-            try:
-                result[days_key] = fetch_zhipu_30d(base, key, days=days_val)
-            except Exception:
-                result[days_key] = None
+    # 近 N 天 token 用量：独立接口，失败静默降级，不影响主数据展示。
+    # 三个区间并行请求，避免串行叠加等待
+    day_jobs = [(k, d) for k, d, flag in
+                (("thirty_day", 30, "show_30d"),
+                 ("fifteen_day", 15, "show_15d"),
+                 ("seven_day", 7, "show_7d"))
+                if zcfg.get(flag, True)]
+    if day_jobs:
+        with ThreadPoolExecutor(max_workers=len(day_jobs)) as pool:
+            futs = {k: pool.submit(fetch_zhipu_30d, base, key, days=d)
+                    for k, d in day_jobs}
+            for k, fut in futs.items():
+                try:
+                    result[k] = fut.result()
+                except Exception:
+                    result[k] = None
 
     result["ok"] = True
     return result
@@ -2718,55 +2726,75 @@ class UsageWidget:
         self.redraw()
 
         def worker():
-            zr, vr = None, None
             # 每次刷新前重读磁盘配置：手动编辑 config.json 保存后，
-            # 右键「立即刷新」即可生效，无需重启程序
+            # 右键「立即刷新」即可生效，无需重启程序。
+            # 注意：worker 线程只读快照，不写 self.cfg（UI 线程在用），
+            # 合并动作挪到主线程 _apply_refresh 里做
             try:
-                _deep_merge(self.cfg, load_config())
+                snap = load_config()
             except Exception:
-                pass
-            zcfg, vcfg = self.cfg.get("zhipu", {}), self.cfg.get("volcano", {})
+                snap = {}
+            zcfg = dict(snap.get("zhipu", {}) or {})
+            vcfg = dict(snap.get("volcano", {}) or {})
+
+            def _safe(fn, arg):
+                def run():
+                    try:
+                        return fn(arg)
+                    except Exception as e:
+                        return {"ok": False, "error": str(e)[:80]}
+                return run
+
+            tasks = {}
             if zcfg.get("enabled", True):
-                try:
-                    zr = fetch_zhipu(zcfg)
-                except Exception as e:
-                    zr = {"ok": False, "error": str(e)[:80]}
+                tasks["zhipu"] = _safe(fetch_zhipu, zcfg)
             if vcfg.get("enabled", True):
-                try:
-                    vr = fetch_volcano(vcfg)
-                except Exception as e:
-                    vr = {"ok": False, "error": str(e)[:80]}
-            self.root.after(0, lambda: self._apply_refresh(zr, vr))
+                tasks["volcano"] = _safe(fetch_volcano, vcfg)
+            out = {}
+            if tasks:
+                # 两家供应商并行请求，刷新等待时间减半
+                with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+                    futs = {name: pool.submit(fn) for name, fn in tasks.items()}
+                    for name, fut in futs.items():
+                        out[name] = fut.result()
+            self.root.after(0, lambda: self._apply_refresh(
+                out.get("zhipu"), out.get("volcano"), snap))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _apply_refresh(self, zr, vr):
-        self.updating = False
-        self._apply_visual_changes()
-        self._apply_theme()      # 定时重估背景明暗（壁纸轮换等场景）
-        now = datetime.datetime.now()
-        any_ok = False
-        if zr is not None:
-            self.errors["zhipu"] = "" if zr.get("ok") else zr.get("error", "失败")
-            if zr.get("ok"):
-                self.data["zhipu"] = zr
-                any_ok = True
-        if vr is not None:
-            self.errors["volcano"] = "" if vr.get("ok") else vr.get("error", "失败")
-            if vr.get("ok"):
-                self.data["volcano"] = vr
-                any_ok = True
-        if any_ok:
-            self.last_ok_time = now
-            self.status_text = "更新于 %s" % now.strftime("%H:%M")
-            self._record_history()
-            self._check_notifications()
-        else:
-            err = self.errors.get("zhipu") or self.errors.get("volcano") or "失败"
-            self.status_text = "更新失败：%s" % err[:22]
-        self.redraw()
-        minutes = max(1, int(self.cfg.get("refresh_minutes", 5)))
-        self.root.after(minutes * 60 * 1000, self.refresh_async)
+    def _apply_refresh(self, zr, vr, snap=None):
+        # 无论本轮处理是否异常，finally 里都要排下一轮刷新，
+        # 否则任何一次绘制/通知抛异常都会让自动刷新链永久断裂
+        try:
+            if snap:
+                _deep_merge(self.cfg, snap)  # 主线程合并磁盘配置
+            self.updating = False
+            self._apply_visual_changes()
+            self._apply_theme()      # 定时重估背景明暗（壁纸轮换等场景）
+            now = datetime.datetime.now()
+            any_ok = False
+            if zr is not None:
+                self.errors["zhipu"] = "" if zr.get("ok") else zr.get("error", "失败")
+                if zr.get("ok"):
+                    self.data["zhipu"] = zr
+                    any_ok = True
+            if vr is not None:
+                self.errors["volcano"] = "" if vr.get("ok") else vr.get("error", "失败")
+                if vr.get("ok"):
+                    self.data["volcano"] = vr
+                    any_ok = True
+            if any_ok:
+                self.last_ok_time = now
+                self.status_text = "更新于 %s" % now.strftime("%H:%M")
+                self._record_history()
+                self._check_notifications()
+            else:
+                err = self.errors.get("zhipu") or self.errors.get("volcano") or "失败"
+                self.status_text = "更新失败：%s" % err[:22]
+            self.redraw()
+        finally:
+            minutes = max(1, int(self.cfg.get("refresh_minutes", 5)))
+            self.root.after(minutes * 60 * 1000, self.refresh_async)
 
     # ---------------- 历史记录 / 烧速预测 / 通知 ----------------
 
@@ -3401,8 +3429,41 @@ class UsageWidget:
             return str(n)
 
     def _toast(self, msg):
-        self.status_text = msg
-        self.redraw()
+        """悬浮窗下方弹出小气泡，短暂停留后淡出。
+        详情面板 v2.3 起不再渲染 status_text，旧实现写了没人看得见。"""
+        try:
+            x = self.root.winfo_rootx() + self.root.winfo_width() // 2
+            y = self.root.winfo_rooty() + self.root.winfo_height() + 10
+            tw = tk.Toplevel(self.root)
+            tw.overrideredirect(True)
+            tw.attributes("-topmost", True)
+            bg = self.t.get("card", "#232429")
+            fg = self.t.get("text", "#eceef2")
+            tk.Label(tw, text=msg, font=(self.font_family, self.fs_text),
+                     padx=14, pady=7, bg=bg, fg=fg).pack()
+            tw.update_idletasks()
+            w = tw.winfo_reqwidth()
+            sw, sh = tw.winfo_screenwidth(), tw.winfo_screenheight()
+            tx = min(max(8, x - w // 2), sw - w - 8)
+            ty = min(y, sh - tw.winfo_reqheight() - 8)
+            tw.geometry("+%d+%d" % (tx, ty))
+
+            def _fade(alpha=[1.0]):
+                if not tw.winfo_exists():
+                    return
+                alpha[0] -= 0.12
+                if alpha[0] <= 0.05:
+                    tw.destroy()
+                    return
+                try:
+                    tw.attributes("-alpha", alpha[0])
+                except Exception:
+                    tw.destroy()
+                    return
+                tw.after(28, _fade)
+            tw.after(1600, _fade)
+        except Exception:
+            self.status_text = msg  # 兜底：气泡异常时至少记录状态
 
 
 # --------------------------------------------------------------------------
