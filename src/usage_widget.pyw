@@ -99,7 +99,7 @@ except Exception:
     CTK_AVAILABLE = False
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.5.6"
+APP_VERSION = "2.5.7"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -1014,11 +1014,17 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         fam = next((f for f in ("Microsoft YaHei UI", "Microsoft YaHei",
                                 "Segoe UI Variable Text", "Segoe UI")
                     if f in fams), "TkDefaultFont")
-        # CTkFont 字号按像素计，CTk 内部再乘窗口缩放，各 DPI 下观感一致
-        self.f_page = ctk.CTkFont(family=fam, size=20, weight="bold")
-        self.f_card = ctk.CTkFont(family=fam, size=15, weight="bold")
-        self.f_label = ctk.CTkFont(family=fam, size=13)
-        self.f_hint = ctk.CTkFont(family=fam, size=12)
+        # CTkFont 字号是绝对像素（不随 DPI 缩放），而控件高度会被 CTk 内部
+        # 按窗口缩放放大——这里手动给字号乘同一系数，保持文字与控件同比例
+        try:
+            self._win_scale = ctk.ScalingTracker.get_window_scaling(self)
+        except Exception:
+            self._win_scale = 1.0
+        _fpx = lambda n: max(1, round(n * self._win_scale))
+        self.f_page = ctk.CTkFont(family=fam, size=_fpx(20), weight="bold")
+        self.f_card = ctk.CTkFont(family=fam, size=_fpx(15), weight="bold")
+        self.f_label = ctk.CTkFont(family=fam, size=_fpx(13))
+        self.f_hint = ctk.CTkFont(family=fam, size=_fpx(12))
 
         # ---- 表单变量（语义与经典版一致，_save 输出相同的 patch） ----
         zcfg = cfg.get("zhipu", {})
@@ -1053,6 +1059,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         self._pages = {}
         self._nav = {}
         self._active_page = ""
+        self._segmented_list = []
 
         # ---- 布局：底部按钮固定 + 左侧导航 + 右侧可滚动内容 ----
         self._build_footer()
@@ -1077,16 +1084,14 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         self._build_nav(side, "display", "显示与提醒")
         self._build_providers_page()
         self._build_display_page()
+        self._paint_segmented()
         self._show_page("providers")
 
         # ---- 尺寸：舒适默认高度（约 600 逻辑像素，与常见设置窗口一致），
         # 内容超出时窗口内滚动，不再按内容撑满全屏 ----
         self.update_idletasks()
         content_h = max(p.winfo_reqheight() for p in self._pages.values())
-        try:
-            win_scale = ctk.ScalingTracker.get_window_scaling(self)
-        except Exception:
-            win_scale = 1.0
+        win_scale = getattr(self, "_win_scale", 1.0)
         w = max(760, self.winfo_reqwidth())
         h = min(int((content_h + 80) / win_scale), 600,
                 int(self.winfo_screenheight() * 0.88 / win_scale))
@@ -1242,14 +1247,29 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
     def _segmented(self, right, values, var):
         seg = ctk.CTkSegmentedButton(
             right, values=list(values), variable=var,
-            font=self.f_hint, height=30, corner_radius=7,
+            font=self.f_label, height=30, corner_radius=7,
             selected_color=self.ACCENT, selected_hover_color=self.ACCENT_HI,
             unselected_color=self.INPUT, unselected_hover_color=self.SIDE_HI,
-            text_color=self.ACCENT_TEXT,
-            command=lambda _v: None)
+            text_color=self.TEXT,
+            command=lambda _v: self._paint_segmented())
         seg.set(var.get())
         seg.pack(side="left")
+        self._segmented_list.append((seg, var))
         return seg
+
+    def _paint_segmented(self):
+        """分段控件文字分态着色：选中格深色文字配蓝底，未选中格浅色文字
+        配深底。CTkSegmentedButton 只支持全局 text_color，深色文字在
+        未选中的深底格上会看不见，需按内部按钮逐格设置。"""
+        for seg, var in self._segmented_list:
+            cur = str(var.get())
+            try:
+                items = list(seg._buttons_dict.items())
+            except Exception:
+                continue
+            for value, btn in items:
+                btn.configure(text_color=self.ACCENT_TEXT
+                              if str(value) == cur else self.TEXT)
 
     # ---------------- 两个页面 ----------------
 
