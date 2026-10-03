@@ -99,7 +99,7 @@ except Exception:
     CTK_AVAILABLE = False
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.5.7"
+APP_VERSION = "2.5.8"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -1006,14 +1006,18 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         self.on_apply = on_apply
         self.on_autostart = on_autostart  # (enable_cb, disable_cb)
 
-        # ---- 字体：雅黑优先（中英文都有完整字形，避免回退宋体发虚） ----
+        # ---- 字体：中文雅黑（完整字形、ClearType 锐利），数字/英文用
+        # Win11 系统的 Segoe UI Variable（更精致）；雅黑在大字号下偏圆粗，
+        # 阶梯整体收细一档，正文 12 逻辑像素，观感向 Win11 原生靠拢 ----
         try:
             fams = set(tkfont.families(self))
         except Exception:
             fams = set()
-        fam = next((f for f in ("Microsoft YaHei UI", "Microsoft YaHei",
-                                "Segoe UI Variable Text", "Segoe UI")
-                    if f in fams), "TkDefaultFont")
+        fam_cjk = next((f for f in ("Microsoft YaHei UI", "Microsoft YaHei")
+                        if f in fams), "TkDefaultFont")
+        fam_latin = next((f for f in ("Segoe UI Variable Text", "Segoe UI",
+                                      "Microsoft YaHei UI")
+                          if f in fams), fam_cjk)
         # CTkFont 字号是绝对像素（不随 DPI 缩放），而控件高度会被 CTk 内部
         # 按窗口缩放放大——这里手动给字号乘同一系数，保持文字与控件同比例
         try:
@@ -1021,10 +1025,13 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         except Exception:
             self._win_scale = 1.0
         _fpx = lambda n: max(1, round(n * self._win_scale))
-        self.f_page = ctk.CTkFont(family=fam, size=_fpx(20), weight="bold")
-        self.f_card = ctk.CTkFont(family=fam, size=_fpx(15), weight="bold")
-        self.f_label = ctk.CTkFont(family=fam, size=_fpx(13))
-        self.f_hint = ctk.CTkFont(family=fam, size=_fpx(12))
+        self.f_page = ctk.CTkFont(family=fam_cjk, size=_fpx(18), weight="bold")
+        self.f_card = ctk.CTkFont(family=fam_cjk, size=_fpx(14), weight="bold")
+        self.f_label = ctk.CTkFont(family=fam_cjk, size=_fpx(12))
+        self.f_hint = ctk.CTkFont(family=fam_cjk, size=_fpx(10))
+        # 数字 / 英文专用（比例分段、步进器数值、密钥输入框、版本号）
+        self.f_num = ctk.CTkFont(family=fam_latin, size=_fpx(12))
+        self.f_num_s = ctk.CTkFont(family=fam_latin, size=_fpx(10))
 
         # ---- 表单变量（语义与经典版一致，_save 输出相同的 patch） ----
         zcfg = cfg.get("zhipu", {})
@@ -1073,7 +1080,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         head.pack(fill="x", padx=18, pady=(20, 16))
         ctk.CTkLabel(head, text=APP_NAME, font=self.f_card,
                      text_color=self.TEXT, anchor="w").pack(fill="x")
-        ctk.CTkLabel(head, text="v" + APP_VERSION, font=self.f_hint,
+        ctk.CTkLabel(head, text="v" + APP_VERSION, font=self.f_num_s,
                      text_color=self.HINT, anchor="w").pack(fill="x")
         self._scroll = ctk.CTkScrollableFrame(
             body, fg_color="transparent", scrollbar_button_color=self.SIDE_HI,
@@ -1195,7 +1202,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         ctk.CTkLabel(row, text=label, font=self.f_label, text_color=self.DIM,
                      width=110, anchor="w").pack(side="left", padx=(0, 8))
         entry = ctk.CTkEntry(
-            row, textvariable=var, height=34, font=self.f_label,
+            row, textvariable=var, height=34, font=self.f_num,
             fg_color=self.INPUT, border_color=self.INPUT_LINE,
             border_width=1, corner_radius=7, text_color=self.TEXT)
         if secret:
@@ -1235,19 +1242,19 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
             ctk.CTkButton(box, text=text, width=30, height=30,
                           corner_radius=6, fg_color="transparent",
                           hover_color=self.SIDE_HI, text_color=self.DIM,
-                          font=self.f_card,
+                          font=self.f_num,
                           command=lambda dd=d: _click(dd)).pack(
                 side="left" if text == "−" else "right")
-        ctk.CTkLabel(box, textvariable=var, width=56, font=self.f_label,
+        ctk.CTkLabel(box, textvariable=var, width=56, font=self.f_num,
                      text_color=self.TEXT).pack(side="left", padx=2)
         if unit:
             ctk.CTkLabel(right, text=unit, font=self.f_hint,
                          text_color=self.HINT).pack(side="left", padx=(8, 0))
 
-    def _segmented(self, right, values, var):
+    def _segmented(self, right, values, var, font=None):
         seg = ctk.CTkSegmentedButton(
             right, values=list(values), variable=var,
-            font=self.f_label, height=30, corner_radius=7,
+            font=font or self.f_label, height=30, corner_radius=7,
             selected_color=self.ACCENT, selected_hover_color=self.ACCENT_HI,
             unselected_color=self.INPUT, unselected_hover_color=self.SIDE_HI,
             text_color=self.TEXT,
@@ -1309,7 +1316,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
                                 ("auto", "dark", "light")), self.theme_choice)
         right = self._row(card, "界面缩放", "觉得悬浮窗太大/太小就调这里")
         self._segmented(right, (SCALE_SHORT[s] for s in SCALE_STEPS),
-                        self.scale_var)
+                        self.scale_var, font=self.f_num)
         right = self._row(card, "窗口透明度", "60% ～ 100%")
         self._stepper(right, self.opacity, 60, 100, 1, "%")
         right = self._row(card, "贴边收起",
