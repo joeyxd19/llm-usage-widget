@@ -92,7 +92,7 @@ except ImportError:  # 允许无图形环境下导入 API 层
     messagebox = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.5.3"
+APP_VERSION = "2.5.4"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -1061,7 +1061,10 @@ class SettingsDialog(tk.Toplevel):
         self.minsize(min(w, self._sx(500)), self._sx(300))
         self.update_idletasks()
         apply_immersive_titlebar(widget_hwnd(self), dark=self.is_dark)
-        self.grab_set()
+        try:
+            self.grab_set()
+        except tk.TclError:
+            pass  # 个别环境窗口尚未映射时抓取失败，不应中断整个设置窗口
         self.focus_set()
         self.bind("<Escape>", lambda e: self._close())
 
@@ -1136,21 +1139,30 @@ class SettingsDialog(tk.Toplevel):
         return cv
 
     def _mini_btn(self, parent, text, cmd):
-        """圆角小按钮（画布绘制），用于显示/隐藏密钥、自启开关等。"""
+        """圆角小按钮（画布绘制），用于显示/隐藏密钥、自启开关等。
+        文字运行期可通过 set_text() 更新（按钮自动加宽重绘）。"""
         f = self.f_hint
-        tw = f.measure(text)
         h = self._sx(24)
-        w = tw + self._sx(20)
-        cv = tk.Canvas(parent, width=w, height=h, bg=parent.cget("bg"),
+        state = {"text": text, "w": f.measure(text) + self._sx(20)}
+        cv = tk.Canvas(parent, width=state["w"], height=h, bg=parent.cget("bg"),
                        highlightthickness=0, cursor="hand2")
 
         def draw(bg):
             cv.delete("all")
             r = h / 2.0
+            w = state["w"]
             self._rrect(cv, 0, 0, w - 1, h - 1, r, fill=bg,
                         outline=self.S_INPUT_LINE)
-            cv.create_text(w / 2.0, h / 2.0, text=text, font=f,
+            cv.create_text(w / 2.0, h / 2.0, text=state["text"], font=f,
                            fill=self.S_TEXT)
+
+        def set_text(t):
+            state["text"] = t
+            state["w"] = max(state["w"], f.measure(t) + self._sx(20))
+            cv.configure(width=state["w"])
+            draw(self.S_INPUT)
+
+        cv.set_text = set_text
         draw(self.S_INPUT)
         cv.bind("<Enter>", lambda e: draw(self.S_SIDE_HI))
         cv.bind("<Leave>", lambda e: draw(self.S_INPUT))
@@ -1318,16 +1330,14 @@ class SettingsDialog(tk.Toplevel):
         cv.after(10, _draw)
 
         if secret:
-            btn = self._mini_btn(row, "显示", None)
-
             def _toggle():
                 if e.cget("show") == "*":
                     e.config(show="")
-                    btn.config(text="隐藏")
+                    btn.set_text("隐藏")
                 else:
                     e.config(show="*")
-                    btn.config(text="显示")
-            btn.config(command=_toggle)
+                    btn.set_text("显示")
+            btn = self._mini_btn(row, "显示", _toggle)
             btn.pack(side="left", padx=(6, 0))
         if hint:
             tk.Label(wrap, text=hint, bg=self.S_CARD, fg=self.S_HINT,
@@ -1456,7 +1466,7 @@ class SettingsDialog(tk.Toplevel):
                                     ("浅色", "light")), self.theme_choice)
         right = self._setting_row(card, "界面缩放",
                                   "觉得悬浮窗太大/太小就调这里")
-        self._row_segmented(right, tuple((SCALE_SHORT[s], s)
+        self._row_segmented(right, tuple((SCALE_SHORT[s], SCALE_SHORT[s])
                                          for s in SCALE_STEPS), self.scale_var)
         right = self._setting_row(card, "窗口透明度", "60% ～ 100%")
         self._row_stepper(right, self.opacity, 60, 100, 1, "%")
