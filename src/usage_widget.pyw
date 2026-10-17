@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.5.2 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.6.1 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.6.1 更新：
+- 置顶守护：用 SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE) 每 1.5 秒重新断言
+  窗口置顶。此前只设一次 tk 的 -topmost，会被系统在切换全屏应用/虚拟桌面等
+  时刻清掉，导致悬浮窗"掉"到其他窗口后面；现在能一直保持置顶且不抢焦点
+- 设置窗也置顶（transient + -topmost），避免被其他窗口遮挡
 
 v2.5.2 更新：
 - 设置窗口视觉彻底重做（对齐 Win11 设置 / CustomTkinter 的设计语言）：
@@ -100,7 +106,7 @@ except Exception:
     CTK_AVAILABLE = False
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.6.1"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -540,6 +546,38 @@ def widget_hwnd(root):
         return ctypes.windll.user32.GetParent(h) or h
     except Exception:
         return 0
+
+
+# Windows SetWindowPos 用到的常量
+_HWND_TOPMOST = -1
+_SWP_NOSIZE = 0x0001
+_SWP_NOMOVE = 0x0002
+_SWP_NOACTIVATE = 0x0010
+
+
+def assert_topmost(hwnd):
+    """用 SetWindowPos 把窗口重新钉到最顶层（HWND_TOPMOST），不激活也不改位置尺寸。
+
+    tk 的 -topmost 会被系统在若干时刻悄悄清掉（切换全屏应用、切换虚拟桌面、
+    窗口显隐、设置 -transparentcolor 等），只靠一次 attributes("-topmost", True)
+    并不能"一直"保持置顶，所以需要定时重新断言。SWP_NOACTIVATE 保证重新置顶时
+    不抢走当前焦点窗口的输入。"""
+    if not hwnd or os.name != "nt":
+        return
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        user32.SetWindowPos.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_uint]
+        user32.SetWindowPos.restype = ctypes.c_bool
+        user32.SetWindowPos(
+            ctypes.c_void_p(hwnd), ctypes.c_void_p(_HWND_TOPMOST),
+            0, 0, 0, 0,
+            _SWP_NOSIZE | _SWP_NOMOVE | _SWP_NOACTIVATE)
+    except Exception:
+        pass
 
 
 # 预测适用的窗口（秒）：只对短周期窗口做烧速外推才有指导意义
@@ -1010,7 +1048,11 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
             setattr(self, k, v)
         self.title("设置 - " + APP_NAME)
         self.configure(fg_color=self.BG)
-        self.transient(master)
+        self.transient(master)               # 始终浮于悬浮窗之上
+        try:
+            self.attributes("-topmost", True)  # 设置窗也置顶，避免被其他窗口遮挡
+        except Exception:
+            pass
         self.on_apply = on_apply
         self.on_autostart = on_autostart  # (enable_cb, disable_cb)
 
@@ -1428,7 +1470,11 @@ class SettingsDialog(tk.Toplevel):
         self.is_dark = skin != "light"
         self.title("设置 - " + APP_NAME)
         self.configure(bg=self.S_BG)
-        self.transient(master)
+        self.transient(master)               # 始终浮于悬浮窗之上
+        try:
+            self.attributes("-topmost", True)  # 设置窗也置顶，避免被其他窗口遮挡
+        except Exception:
+            pass
         self.on_apply = on_apply
         self.on_autostart = on_autostart  # (enable_cb, disable_cb)
 
@@ -2047,6 +2093,9 @@ class UsageWidget:
         self._suppress_collapse = False
         # ---- 详情面板倒计时刷新 ----
         self._detail_tick_job = None
+        # ---- 置顶守护 ----
+        self._topmost_job = None
+        self._topmost_hwnd = 0
         # ---- 配色主题 ----
         self.theme_eff = "dark"
         self.t = dict(THEMES["dark"])
@@ -2075,6 +2124,7 @@ class UsageWidget:
             self.redraw()
             self.root.after(500, self.open_settings)
         self.root.after(300, self.refresh_async)
+        self._start_topmost_guard()
 
     # ---------------- 尺寸与字体 ----------------
 
@@ -2703,6 +2753,7 @@ class UsageWidget:
     def quit(self):
         self._cancel_collapse_timer()
         self._cancel_detail_tick()
+        self._cancel_topmost_guard()
         if self._anim_job is not None:
             try:
                 self.root.after_cancel(self._anim_job)
@@ -3293,6 +3344,39 @@ class UsageWidget:
             except Exception:
                 pass
             self._detail_tick_job = None
+
+    # ---------------- 置顶守护 ----------------
+
+    def _start_topmost_guard(self):
+        """启动置顶守护：定时用 SetWindowPos 重新断言 HWND_TOPMOST。
+
+        tk 的 -topmost 会被系统清掉（切换全屏应用/虚拟桌面、窗口显隐等），
+        只设一次无法"一直"置顶，故用一个轻量定时器周期性重新钉住。"""
+        self._cancel_topmost_guard()
+        self._topmost_job = self.root.after(700, self._topmost_tick)
+
+    def _topmost_tick(self):
+        self._topmost_job = None
+        if not self._topmost_hwnd:
+            self._topmost_hwnd = widget_hwnd(self.root)
+        assert_topmost(self._topmost_hwnd)
+        # 设置窗是悬浮窗的子窗；重新钉住悬浮窗后再把设置窗也提到最上，
+        # 避免它被刚置顶的悬浮窗盖住
+        dlg = getattr(self, "_settings_open", None)
+        try:
+            if dlg is not None and dlg.winfo_exists():
+                assert_topmost(widget_hwnd(dlg))
+        except Exception:
+            pass
+        self._topmost_job = self.root.after(1500, self._topmost_tick)
+
+    def _cancel_topmost_guard(self):
+        if self._topmost_job is not None:
+            try:
+                self.root.after_cancel(self._topmost_job)
+            except Exception:
+                pass
+            self._topmost_job = None
 
     # ---------------- 贴边把手：微型进度条 ----------------
 
