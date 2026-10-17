@@ -46,6 +46,18 @@ jobs:
       - name: 安装依赖
         run: pip install pyinstaller==6.22.3 customtkinter==6.0.0
 
+      - name: 打包 onedir（非单文件，推荐）
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          pyinstaller --noconsole --clean \
+            --collect-all customtkinter \
+            --distpath dist/onedir --workpath build/onedir \
+            --name "llm-usage-widget_v${VERSION}" \
+            src/usage_widget.pyw
+
       - name: 打包单文件 EXE
         shell: bash
         env:
@@ -54,11 +66,23 @@ jobs:
           VERSION="${TAG#v}"
           pyinstaller --onefile --noconsole --clean \
             --collect-all customtkinter \
+            --distpath dist/onefile --workpath build/onefile \
             --name "llm-usage-widget_v${VERSION}" \
             src/usage_widget.pyw
+
+      - name: 把 onedir 打成便携版 zip
+        shell: pwsh
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          $v = $env:TAG.Substring(1)
+          Compress-Archive -Path "dist/onedir/llm-usage-widget_v$v" `
+            -DestinationPath "dist/llm-usage-widget_v${v}_portable.zip" -Force
 
       - name: 上传到 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          files: dist/*.exe
+          files: |
+            dist/onefile/*.exe
+            dist/*.zip

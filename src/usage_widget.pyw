@@ -1,11 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.6.2 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.6.3 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.6.3 更新：
+- 发布形态改为「onedir（文件夹）+ 单文件 exe」双版本：onedir 从安装目录
+  直接运行，不再每次启动把依赖解包到系统临时目录，启动更快、贴边展开
+  动画更顺；单文件 exe 继续保留
+- 贴边展开/收回动画重做：帧数随距离自适应（每帧位移约 1px 以上）、
+  缓动曲线末端保留少量速度（不再"停住再跳"），并叠加轻微透明度淡入
+  淡出，动效更连贯优雅
+- 设置窗视觉再精修：导航选中态改为 Win11 式圆角"药丸"高亮、卡片行之间
+  加 1px 发丝分隔线、底部按钮栏加上分隔线、卡片描边压到近乎不可见
 
 v2.6.2 更新：
 - 设置窗口视觉再打磨，向 Win11 设置面板的观感靠拢：更深邃的中性底色 +
-  靛蓝强调色，卡片靠层次与留白区分、弱化边框；说明文字字号 10→11，
-  小字在深色底上更易读；卡片圆角 8→10、输入框圆角 6→8、开关 44×20→
+  靛蓝强调色，卡片靠层次与留白区分；说明文字字号 10→11，
+  小字在深色底上更易读；卡片圆角 8→12、输入框圆角 6→8、开关 44×20→
   42×22、步进器 28→30px，边距与行距整体放宽
 - 窗口默认宽 760→780、高度封顶 600→700，供应商页可完整显示，
   更长的页面仍在窗口内滚动
@@ -114,7 +124,7 @@ except Exception:
     CTK_AVAILABLE = False
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.6.2"
+APP_VERSION = "2.6.3"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -1015,21 +1025,21 @@ def apply_immersive_titlebar(hwnd, dark=True):
 
 
 CTK_SKINS = {
-    # 设置窗皮肤：更深邃的中性底色 + 靛蓝强调色，卡片靠层次与留白区分，
-    # 弱化边框，向 Win11 设置面板的自在观感靠拢
+    # 设置窗皮肤：深邃中性底色 + 靛蓝强调色。卡片靠底色层次区分、边框压到
+    # 近乎不可见（Win11 深色卡片本就无描边），行与行之间用 1px 发丝线分隔
     "dark": {
-        "BG": "#15171c", "SIDE": "#1a1c22", "SIDE_HI": "#272a33",
-        "CARD": "#1f2128", "LINE": "#2b2f39",
-        "TEXT": "#e9ecf2", "DIM": "#98a0ad", "HINT": "#717986",
-        "INPUT": "#191b21", "INPUT_LINE": "#343946",
-        "ACCENT": "#7d8eff", "ACCENT_HI": "#95a3ff", "ACCENT_SOFT": "#333c66",
+        "BG": "#131519", "SIDE": "#171a1f", "SIDE_HI": "#242832",
+        "CARD": "#1e2128", "LINE": "#282c35",
+        "TEXT": "#eceef3", "DIM": "#9aa2b0", "HINT": "#727b89",
+        "INPUT": "#171a20", "INPUT_LINE": "#30343e",
+        "ACCENT": "#7c8cff", "ACCENT_HI": "#94a2ff", "ACCENT_SOFT": "#333c66",
         "ACCENT_TEXT": "#0d0f1a",
     },
     "light": {
-        "BG": "#f3f4f7", "SIDE": "#eceef2", "SIDE_HI": "#e0e3e9",
-        "CARD": "#ffffff", "LINE": "#e4e7ec",
+        "BG": "#f4f5f8", "SIDE": "#eceef3", "SIDE_HI": "#e1e4ea",
+        "CARD": "#ffffff", "LINE": "#e7eaef",
         "TEXT": "#191b20", "DIM": "#565d69", "HINT": "#7b828e",
-        "INPUT": "#f6f7f9", "INPUT_LINE": "#d3d7df",
+        "INPUT": "#f6f7f9", "INPUT_LINE": "#d5d9e0",
         "ACCENT": "#4a5fd6", "ACCENT_HI": "#3b4fc4", "ACCENT_SOFT": "#e8ecfb",
         "ACCENT_TEXT": "#ffffff",
     },
@@ -1180,6 +1190,8 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         bar = ctk.CTkFrame(self, fg_color=self.BG, corner_radius=0, height=60)
         bar.pack(side="bottom", fill="x")
         bar.pack_propagate(False)
+        ctk.CTkFrame(bar, height=1, fg_color=self.LINE,
+                     corner_radius=0).pack(side="top", fill="x")
         ctk.CTkButton(
             bar, text="取消", width=88, height=32, corner_radius=16,
             fg_color=self.INPUT, hover_color=self.INPUT_LINE,
@@ -1192,15 +1204,15 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
             command=self._save).pack(side="right")
 
     def _build_nav(self, side, key, text):
-        item = ctk.CTkFrame(side, fg_color="transparent", corner_radius=5,
-                            height=34)
+        item = ctk.CTkFrame(side, fg_color="transparent", corner_radius=6,
+                            height=36)
         item.pack(fill="x", padx=10, pady=2)
         item.pack_propagate(False)
         bar = ctk.CTkFrame(item, width=3, fg_color="transparent",
                            corner_radius=2)
         bar.pack(side="left", fill="y", padx=(0, 8))
         btn = ctk.CTkButton(
-            item, text=text, anchor="w", height=34, corner_radius=5,
+            item, text=text, anchor="w", height=36, corner_radius=6,
             fg_color="transparent", text_color=self.DIM,
             hover_color=self.SIDE_HI, font=self.f_label,
             command=lambda k=key: self._show_page(k))
@@ -1218,8 +1230,9 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         return page
 
     def _card(self, page, title=None, accent=None, enable_var=None, desc=None):
-        card = ctk.CTkFrame(page, fg_color=self.CARD, corner_radius=10,
+        card = ctk.CTkFrame(page, fg_color=self.CARD, corner_radius=12,
                             border_width=1, border_color=self.LINE)
+        card._rows = 0
         card.pack(fill="x", padx=18, pady=(0, 14))
         if title:
             head = ctk.CTkFrame(card, fg_color="transparent")
@@ -1236,7 +1249,17 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
                              wraplength=560).pack(fill="x", padx=18, pady=(5, 2))
         return card
 
+    def _sep(self, card):
+        """卡片内相邻两行之间画一条 1px 发丝分隔线（Win11 设置行的做法，
+        比整块描边更轻、更有层次）。首行不画。"""
+        n = getattr(card, "_rows", 0)
+        card._rows = n + 1
+        if n > 0:
+            ctk.CTkFrame(card, height=1, fg_color=self.LINE,
+                         corner_radius=0).pack(fill="x", padx=18)
+
     def _row(self, card, title, desc=None, bottom=16):
+        self._sep(card)
         row = ctk.CTkFrame(card, fg_color="transparent")
         row.pack(fill="x", padx=18, pady=(10, bottom))
         left = ctk.CTkFrame(row, fg_color="transparent")
@@ -1262,6 +1285,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
             button_color=self.TEXT, button_hover_color=self.TEXT)
 
     def _entry_field(self, card, label, var, hint=None, secret=False, bottom=12):
+        self._sep(card)
         wrap = ctk.CTkFrame(card, fg_color="transparent")
         wrap.pack(fill="x", padx=18, pady=(0, bottom))
         row = ctk.CTkFrame(wrap, fg_color="transparent")
@@ -1355,8 +1379,9 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
                           hint="智谱开放平台 → API Keys 页面")
         self._entry_field(card, "接口地址", self.z_base,
                           hint="国际版填 api.z.ai，一般不用改")
+        self._sep(card)
         row = ctk.CTkFrame(card, fg_color="transparent")
-        row.pack(fill="x", padx=16, pady=(0, 14))
+        row.pack(fill="x", padx=18, pady=(6, 14))
         for text, var in (("近 30 天用量", self.z_30d),
                           ("近 15 天用量", self.z_15d),
                           ("近 7 天用量", self.z_7d)):
@@ -1405,7 +1430,8 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
 
         card = self._card(page, "开机自启", desc="登录 Windows 后自动启动悬浮窗")
         row = ctk.CTkFrame(card, fg_color="transparent")
-        row.pack(fill="x", padx=16, pady=(6, 14))
+        self._sep(card)
+        row.pack(fill="x", padx=18, pady=(6, 14))
         for text, cb, pad in (("设置自启", self.on_autostart[0], 0),
                               ("取消自启", self.on_autostart[1], 8)):
             ctk.CTkButton(row, text=text, width=84, height=28, corner_radius=14,
@@ -1421,10 +1447,12 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         for k, page in self._pages.items():
             page.pack_forget()
         self._pages[key].pack(fill="both", expand=True)
-        # Win11 式导航选中态：透明底 + 强调色文字 + 左侧品牌色竖条
+        # Win11 式导航选中态：浅底圆角"药丸" + 强调色文字 + 左侧品牌色竖条
         for k, st in self._nav.items():
             active = (k == key)
-            st["btn"].configure(text_color=self.ACCENT if active else self.DIM)
+            st["btn"].configure(
+                fg_color=self.SIDE_HI if active else "transparent",
+                text_color=self.ACCENT if active else self.DIM)
             st["bar"].configure(fg_color=self.ACCENT if active
                                 else "transparent")
 
@@ -2400,15 +2428,17 @@ class UsageWidget:
         side = min(dists, key=dists.get)
         return side if dists[side] <= threshold else None
 
-    def _animate_move(self, tx, ty, done=None, frm=None):
+    def _animate_move(self, tx, ty, done=None, frm=None, fade=False):
         """缓出动画移动窗口到 (tx, ty)，结束回调 done。
-        frm 可显式指定起点：geometry() 请求后 winfo 立即读仍是旧值。"""
+        frm 可显式指定起点：geometry() 请求后 winfo 立即读仍是旧值。
+        fade=True 时同步做透明度淡入（展开）/淡出（收起），提升贴边动效观感。"""
         if self._anim_job is not None:
             try:
                 self.root.after_cancel(self._anim_job)
             except Exception:
                 pass
             self._anim_job = None
+            self._restore_alpha()   # 上一次被打断：先把透明度恢复到位，避免残留
         if frm is not None:
             sx, sy = frm
         else:
@@ -2420,19 +2450,40 @@ class UsageWidget:
                 done()
             return
         dist = max(abs(dx), abs(dy))
-        steps = max(4, min(16, int(dist / 22)))
+        # 帧数随距离自适应：每帧位移基本 >=1px，上限 30 帧避免长距离拖沓
+        steps = max(7, min(30, int(round(dist / 13.0))))
+        target_alpha = float(self.cfg.get("opacity", 0.96))
+        if fade:
+            try:
+                self.root.attributes("-alpha", max(0.0, target_alpha * 0.35))
+            except Exception:
+                pass
 
         def step(i):
             t = float(i + 1) / steps
-            ease = 1.0 - (1.0 - t) ** 3  # ease-out cubic
-            self.root.geometry("+%d+%d" % (
-                int(round(sx + dx * ease)), int(round(sy + dy * ease))))
-            if i + 1 < steps:
-                self._anim_job = self.root.after(12, step, i + 1)
-            else:
+            ease = 1.0 - (1.0 - t) ** 3
+            ease = 0.82 * ease + 0.18 * t   # 末端保留一点速度：不再"停住再跳"
+            if i + 1 >= steps:
+                self.root.geometry("+%d+%d" % (tx, ty))   # 精确落位
+                if fade:
+                    try:
+                        self.root.attributes("-alpha", target_alpha)
+                    except Exception:
+                        pass
                 self._anim_job = None
                 if done:
                     done()
+                return
+            self.root.geometry("+%d+%d" % (
+                int(round(sx + dx * ease)), int(round(sy + dy * ease))))
+            if fade:
+                try:
+                    self.root.attributes(
+                        "-alpha", max(0.0, target_alpha * (0.35 + 0.65 * ease)))
+                except Exception:
+                    pass
+            self._anim_job = self.root.after(10, step, i + 1)
+
         step(0)
 
     def _snap_to_expanded(self):
@@ -2511,7 +2562,7 @@ class UsageWidget:
             self.root.update_idletasks()
             self._save_window_pos()
 
-        self._animate_move(tx, ty, done, frm=frm)
+        self._animate_move(tx, ty, done, frm=frm, fade=True)
 
     def _expand_from_dock(self):
         """从收起状态滑出展开（鼠标移上把手时触发），显示完整详情面板。"""
@@ -2548,7 +2599,7 @@ class UsageWidget:
             self._animating = False
             self.dock_state = "expanded"
 
-        self._animate_move(on[0], on[1], done, frm=off)
+        self._animate_move(on[0], on[1], done, frm=off, fade=True)
         self._start_detail_tick()
         # 数据超过 2 分钟未刷新：展开时顺带拉取一次最新额度
         if (self.last_ok_time is None or
@@ -2605,7 +2656,7 @@ class UsageWidget:
             self._apply_theme()
             self.redraw()
 
-        self._animate_move(slide[0], slide[1], done)
+        self._animate_move(slide[0], slide[1], done, fade=True)
 
     def _on_widget_enter(self, event):
         self._suppress_collapse = False

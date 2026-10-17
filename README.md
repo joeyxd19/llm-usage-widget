@@ -6,7 +6,9 @@ Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **�
 
 > 适用于任何 Windows 10/11 电脑，无需安装 Python 或任何依赖。
 
-1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中下载 EXE 附件（`llm-usage-widget_版本号.exe`，约 10 MB）
+1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中选择下载：
+   - **推荐** `llm-usage-widget_vX.X.X_portable.zip`（非单文件版，约 20 MB）：解压后双击文件夹内的 `llm-usage-widget_vX.X.X.exe`，启动更快、动效更顺
+   - 或 `llm-usage-widget_vX.X.X.exe`（单文件版，约 13 MB）：双击即用，便于携带
 2. 双击运行。首次运行若弹出 Windows SmartScreen 蓝色提示，点「更多信息」→「仍要运行」
 3. 首次运行会弹出设置窗口，填入密钥即可开始使用
 
@@ -41,11 +43,20 @@ python src/usage_widget.pyw
 
 双击 `scripts/启动.vbs`：优先启动 EXE，没有 EXE 时自动改用本机 Python 跑源码。
 
-**打包 EXE**（PyInstaller）：
+**打包**（PyInstaller，两种形态）：
 
 ```bash
-pip install pyinstaller customtkinter
-pyinstaller --onefile --windowed --collect-all customtkinter --name 额度悬浮窗 --distpath release --workpath build --specpath build src/usage_widget.pyw
+pip install pyinstaller==6.22.3 customtkinter==6.0.0
+
+# 非单文件（onedir，推荐）；产物：dist/onedir/llm-usage-widget_vX.X.X/
+pyinstaller --noconsole --clean --collect-all customtkinter \
+  --distpath dist/onedir --workpath build/onedir \
+  --name llm-usage-widget_vX.X.X src/usage_widget.pyw
+
+# 单文件 exe；产物：dist/onefile/llm-usage-widget_vX.X.X.exe
+pyinstaller --onefile --noconsole --clean --collect-all customtkinter \
+  --distpath dist/onefile --workpath build/onefile \
+  --name llm-usage-widget_vX.X.X src/usage_widget.pyw
 ```
 
 首次运行会弹出设置窗口，填入密钥即可：
@@ -68,8 +79,9 @@ llm-usage-widget/
 │   └── 版本日志.md          # 各版本变更记录
 ├── scripts/
 │   └── 启动.vbs             # 静默启动脚本（EXE 优先）
-└── release/                 # 本地 PyInstaller 打包产物（不入库，发布版见 Releases）
-    └── 额度悬浮窗.exe
+└── dist/                   # 本地 PyInstaller 打包产物（不入库，发布版见 Releases）
+    ├── onedir/             # 非单文件版（推荐，打成 zip 分发）
+    └── onefile/            # 单文件 exe
 ```
 
 ## 使用说明与常见问题
