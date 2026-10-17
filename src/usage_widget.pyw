@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.6.1 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.6.2 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.6.2 更新：
+- 设置窗口视觉再打磨，向 Win11 设置面板的观感靠拢：更深邃的中性底色 +
+  靛蓝强调色，卡片靠层次与留白区分、弱化边框；说明文字字号 10→11，
+  小字在深色底上更易读；卡片圆角 8→10、输入框圆角 6→8、开关 44×20→
+  42×22、步进器 28→30px，边距与行距整体放宽
+- 窗口默认宽 760→780、高度封顶 600→700，供应商页可完整显示，
+  更长的页面仍在窗口内滚动
 
 v2.6.1 更新：
 - 置顶守护：用 SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE) 每 1.5 秒重新断言
@@ -106,7 +114,7 @@ except Exception:
     CTK_AVAILABLE = False
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.6.1"
+APP_VERSION = "2.6.2"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -1007,21 +1015,22 @@ def apply_immersive_titlebar(hwnd, dark=True):
 
 
 CTK_SKINS = {
-    # 与悬浮窗 v2.5.3 配色对齐的 CustomTkinter 皮肤
+    # 设置窗皮肤：更深邃的中性底色 + 靛蓝强调色，卡片靠层次与留白区分，
+    # 弱化边框，向 Win11 设置面板的自在观感靠拢
     "dark": {
-        "BG": "#141518", "SIDE": "#18191d", "SIDE_HI": "#25262c",
-        "CARD": "#202127", "LINE": "#2b2d33",
-        "TEXT": "#eef0f4", "DIM": "#8b919c", "HINT": "#6b717c",
-        "INPUT": "#16171b", "INPUT_LINE": "#35373f",
-        "ACCENT": "#8a9dff", "ACCENT_HI": "#a2b2ff", "ACCENT_SOFT": "#3a4270",
-        "ACCENT_TEXT": "#0e1020",
+        "BG": "#15171c", "SIDE": "#1a1c22", "SIDE_HI": "#272a33",
+        "CARD": "#1f2128", "LINE": "#2b2f39",
+        "TEXT": "#e9ecf2", "DIM": "#98a0ad", "HINT": "#717986",
+        "INPUT": "#191b21", "INPUT_LINE": "#343946",
+        "ACCENT": "#7d8eff", "ACCENT_HI": "#95a3ff", "ACCENT_SOFT": "#333c66",
+        "ACCENT_TEXT": "#0d0f1a",
     },
     "light": {
-        "BG": "#f2f3f6", "SIDE": "#e9ebef", "SIDE_HI": "#dde0e6",
-        "CARD": "#ffffff", "LINE": "#e2e5ea",
-        "TEXT": "#1a1c21", "DIM": "#5a616c", "HINT": "#7d848f",
-        "INPUT": "#f7f8fa", "INPUT_LINE": "#d0d4da",
-        "ACCENT": "#4c63d8", "ACCENT_HI": "#3d54c9", "ACCENT_SOFT": "#e8ecfb",
+        "BG": "#f3f4f7", "SIDE": "#eceef2", "SIDE_HI": "#e0e3e9",
+        "CARD": "#ffffff", "LINE": "#e4e7ec",
+        "TEXT": "#191b20", "DIM": "#565d69", "HINT": "#7b828e",
+        "INPUT": "#f6f7f9", "INPUT_LINE": "#d3d7df",
+        "ACCENT": "#4a5fd6", "ACCENT_HI": "#3b4fc4", "ACCENT_SOFT": "#e8ecfb",
         "ACCENT_TEXT": "#ffffff",
     },
 }
@@ -1075,13 +1084,14 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         except Exception:
             self._win_scale = 1.0
         _fpx = lambda n: max(1, round(n * self._win_scale))
-        self.f_page = ctk.CTkFont(family=fam_cjk, size=_fpx(15), weight="bold")
+        self.f_page = ctk.CTkFont(family=fam_cjk, size=_fpx(16), weight="bold")
         self.f_card = ctk.CTkFont(family=fam_cjk, size=_fpx(13), weight="bold")
         self.f_label = ctk.CTkFont(family=fam_cjk, size=_fpx(12))
-        self.f_hint = ctk.CTkFont(family=fam_cjk, size=_fpx(10))
+        # 说明文字抬到 11：小字号在深底上更易读，弱化"字发虚"的观感
+        self.f_hint = ctk.CTkFont(family=fam_cjk, size=_fpx(11))
         # 数字 / 英文专用（比例分段、步进器数值、密钥输入框、版本号）
         self.f_num = ctk.CTkFont(family=fam_latin, size=_fpx(12))
-        self.f_num_s = ctk.CTkFont(family=fam_latin, size=_fpx(10))
+        self.f_num_s = ctk.CTkFont(family=fam_latin, size=_fpx(11))
 
         # ---- 表单变量（语义与经典版一致，_save 输出相同的 patch） ----
         zcfg = cfg.get("zhipu", {})
@@ -1144,14 +1154,14 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         self._paint_segmented()
         self._show_page("providers")
 
-        # ---- 尺寸：舒适默认高度（约 600 逻辑像素，与常见设置窗口一致），
-        # 内容超出时窗口内滚动，不再按内容撑满全屏 ----
+        # ---- 尺寸：默认高度贴合内容（供应商页可完整显示），到 700 逻辑像素
+        # 封顶；更长的页面（显示与提醒）窗口内滚动，不追求一屏看尽 ----
         self.update_idletasks()
         content_h = max(p.winfo_reqheight() for p in self._pages.values())
         win_scale = getattr(self, "_win_scale", 1.0)
-        w = max(760, self.winfo_reqwidth())
-        h = min(int((content_h + 80) / win_scale), 600,
-                int(self.winfo_screenheight() * 0.88 / win_scale))
+        w = max(780, self.winfo_reqwidth())
+        h = min(int((content_h + 84) / win_scale), 700,
+                int(self.winfo_screenheight() * 0.86 / win_scale))
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry("%dx%d+%d+%d" % (
             w, h, max(0, (sw - w) // 2), max(0, (sh - h) // 2)))
@@ -1200,22 +1210,22 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
     def _page(self, key, title, subtitle):
         page = ctk.CTkFrame(self._scroll, fg_color="transparent")
         ctk.CTkLabel(page, text=title, font=self.f_page, text_color=self.TEXT,
-                     anchor="w").pack(fill="x", padx=16, pady=(20, 0))
+                     anchor="w").pack(fill="x", padx=20, pady=(22, 0))
         ctk.CTkLabel(page, text=subtitle, font=self.f_hint,
                      text_color=self.HINT, anchor="w", justify="left",
-                     wraplength=520).pack(fill="x", padx=16, pady=(2, 12))
+                     wraplength=560).pack(fill="x", padx=20, pady=(4, 14))
         self._pages[key] = page
         return page
 
     def _card(self, page, title=None, accent=None, enable_var=None, desc=None):
-        card = ctk.CTkFrame(page, fg_color=self.CARD, corner_radius=8,
+        card = ctk.CTkFrame(page, fg_color=self.CARD, corner_radius=10,
                             border_width=1, border_color=self.LINE)
-        card.pack(fill="x", padx=16, pady=(0, 12))
+        card.pack(fill="x", padx=18, pady=(0, 14))
         if title:
             head = ctk.CTkFrame(card, fg_color="transparent")
-            head.pack(fill="x", padx=16, pady=(14, 0))
-            ctk.CTkFrame(head, width=3, height=12, fg_color=accent or self.ACCENT,
-                         corner_radius=2).pack(side="left", fill="y", padx=(0, 8))
+            head.pack(fill="x", padx=18, pady=(16, 0))
+            ctk.CTkFrame(head, width=3, height=14, fg_color=accent or self.ACCENT,
+                         corner_radius=2).pack(side="left", fill="y", padx=(0, 9))
             ctk.CTkLabel(head, text=title, font=self.f_card,
                          text_color=self.TEXT).pack(side="left")
             if enable_var is not None:
@@ -1223,12 +1233,12 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
             if desc:
                 ctk.CTkLabel(card, text=desc, font=self.f_hint,
                              text_color=self.HINT, anchor="w", justify="left",
-                             wraplength=520).pack(fill="x", padx=16, pady=(4, 2))
+                             wraplength=560).pack(fill="x", padx=18, pady=(5, 2))
         return card
 
-    def _row(self, card, title, desc=None, bottom=14):
+    def _row(self, card, title, desc=None, bottom=16):
         row = ctk.CTkFrame(card, fg_color="transparent")
-        row.pack(fill="x", padx=16, pady=(8, bottom))
+        row.pack(fill="x", padx=18, pady=(10, bottom))
         left = ctk.CTkFrame(row, fg_color="transparent")
         left.pack(side="left", fill="x", expand=True)
         ctk.CTkLabel(left, text=title, font=self.f_label,
@@ -1246,22 +1256,22 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
 
     def _switch(self, parent, var):
         return ctk.CTkSwitch(
-            parent, text="", variable=var, width=44,
-            switch_width=40, switch_height=20,
+            parent, text="", variable=var, width=46,
+            switch_width=42, switch_height=22,
             progress_color=self.ACCENT, fg_color=self.INPUT_LINE,
             button_color=self.TEXT, button_hover_color=self.TEXT)
 
-    def _entry_field(self, card, label, var, hint=None, secret=False, bottom=10):
+    def _entry_field(self, card, label, var, hint=None, secret=False, bottom=12):
         wrap = ctk.CTkFrame(card, fg_color="transparent")
-        wrap.pack(fill="x", padx=16, pady=(0, bottom))
+        wrap.pack(fill="x", padx=18, pady=(0, bottom))
         row = ctk.CTkFrame(wrap, fg_color="transparent")
         row.pack(fill="x")
         ctk.CTkLabel(row, text=label, font=self.f_label, text_color=self.DIM,
-                     width=100, anchor="w").pack(side="left", padx=(0, 8))
+                     width=104, anchor="w").pack(side="left", padx=(0, 10))
         entry = ctk.CTkEntry(
-            row, textvariable=var, height=32, font=self.f_num,
+            row, textvariable=var, height=34, font=self.f_num,
             fg_color=self.INPUT, border_color=self.INPUT_LINE,
-            border_width=1, corner_radius=6, text_color=self.TEXT)
+            border_width=1, corner_radius=8, text_color=self.TEXT)
         if secret:
             entry.configure(show="*")
         entry.pack(side="left", fill="x", expand=True)
@@ -1274,18 +1284,18 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
                 entry.configure(show="*")
                 btn.configure(text="显示")
         if secret:
-            btn = ctk.CTkButton(row, text="显示", width=52, height=26,
-                                corner_radius=13, font=self.f_hint,
+            btn = ctk.CTkButton(row, text="显示", width=54, height=28,
+                                corner_radius=14, font=self.f_hint,
                                 fg_color=self.INPUT, hover_color=self.SIDE_HI,
                                 text_color=self.TEXT, command=_toggle)
-            btn.pack(side="left", padx=(8, 0))
+            btn.pack(side="left", padx=(10, 0))
         if hint:
             ctk.CTkLabel(wrap, text=hint, font=self.f_hint, text_color=self.HINT,
-                         anchor="w").pack(fill="x", pady=(3, 0))
+                         anchor="w").pack(fill="x", pady=(4, 0))
         return entry
 
     def _stepper(self, right, var, lo, hi, step=1, unit=""):
-        box = ctk.CTkFrame(right, fg_color=self.INPUT, corner_radius=6,
+        box = ctk.CTkFrame(right, fg_color=self.INPUT, corner_radius=8,
                            border_width=1, border_color=self.INPUT_LINE)
         box.pack(side="left")
 
@@ -1296,13 +1306,13 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
                 v = lo
             var.set(min(hi, max(lo, v)))
         for text, d in (("−", -step), ("+", step)):
-            ctk.CTkButton(box, text=text, width=28, height=28,
-                          corner_radius=5, fg_color="transparent",
+            ctk.CTkButton(box, text=text, width=30, height=30,
+                          corner_radius=6, fg_color="transparent",
                           hover_color=self.SIDE_HI, text_color=self.DIM,
                           font=self.f_num,
                           command=lambda dd=d: _click(dd)).pack(
                 side="left" if text == "−" else "right")
-        ctk.CTkLabel(box, textvariable=var, width=48, font=self.f_num,
+        ctk.CTkLabel(box, textvariable=var, width=50, font=self.f_num,
                      text_color=self.TEXT).pack(side="left", padx=2)
         if unit:
             ctk.CTkLabel(right, text=unit, font=self.f_hint,
