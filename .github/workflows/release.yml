@@ -76,7 +76,7 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           $v = $env:TAG.Substring(1)
-          Compress-Archive -Path "dist/onedir/llm-usage-widget_v$v" `
+          Compress-Archive -Path "dist/onedir/llm-usage-widget" `
             -DestinationPath "dist/llm-usage-widget_v${v}_portable.zip" -Force
 
       - name: 上传到 Release

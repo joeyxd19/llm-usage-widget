@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.6.4 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.6.5 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.6.5 更新：
+- 修复 v2.6.4 CI 打包脚本中 onedir 产物路径错误，Release 现在能正确产出
+  `*_portable.zip`，zip 内为通用名 `llm-usage-widget/llm-usage-widget.exe`
 
 v2.6.4 更新：
 - 内置自动更新：右键菜单新增「检查更新…」，检测 GitHub Releases 新版，
@@ -137,7 +141,7 @@ except Exception:
     Updater = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.6.4"
+APP_VERSION = "2.6.5"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
