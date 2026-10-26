@@ -121,43 +121,71 @@ class Updater:
                 )
             return
 
-        # 优先使用增量包；如不存在则回退完整 update.zip
+        if self.pkg == "onefile":
+            # 单文件版直接替换 exe，不涉及增量逻辑
+            asset = next(
+                (a for a in assets if a.get("name") == self._asset_name(tag)), None
+            )
+            if asset is None:
+                self._busy = False
+                self._ui_after(
+                    0,
+                    lambda: self._on_error(
+                        "未找到更新包",
+                        f"Release {tag} 中没有 {self._asset_name(tag)}，请去 Releases 页面手动下载。",
+                        silent,
+                    ),
+                )
+                return
+            url = asset["browser_download_url"]
+            size = asset.get("size", 0)
+            self._ui_after(0, lambda: self._ask_update(tag, body, url, size))
+            return
+
+        # 文件夹版：优先增量包，但仅当上一条 release 正好是当前版本时才安全
         manifest_asset = next(
             (a for a in assets if a.get("name") == self._manifest_name(tag)), None
         )
         delta_asset = next(
             (a for a in assets if a.get("name") == self._delta_name(tag)), None
+        )
         update_asset = next(
             (a for a in assets if a.get("name") == self._update_name(tag)), None
         )
-        chosen = delta_asset or update_asset
-        if chosen is None or manifest_asset is None:
+
+        manifest = None
+        if manifest_asset is not None:
+            try:
+                manifest = self._download_manifest(
+                    manifest_asset["browser_download_url"]
+                )
+            except Exception:
+                manifest = None
+
+        prev_version = str((manifest or {}).get("previous") or "")
+        can_delta = bool(
+            delta_asset
+            and manifest
+            and prev_version
+            and prev_version == self.current_version
+        )
+        chosen = delta_asset if can_delta else update_asset
+
+        if chosen is None:
             self._busy = False
             self._ui_after(
                 0,
                 lambda: self._on_error(
                     "未找到更新包",
-                    f"Release {tag} 缺少必要资产，请去 Releases 页面手动下载。",
+                    f"Release {tag} 缺少安装包，请去 Releases 页面手动下载。",
                     silent,
                 ),
             )
             return
 
-        # 下载 manifest 计算实际变更（用于显示更精确的大小）
-        manifest = None
-        try:
-            manifest = self._download_manifest(manifest_asset["browser_download_url"])
-        except Exception:
-            pass
-
         url = chosen["browser_download_url"]
         size = chosen.get("size", 0)
-        delta_info = None
-        if manifest:
-            delta_info = self._compute_delta(manifest)
-            if delta_info and delta_info.get("changed_count", 0):
-                # 用 delta 包实际大小更准确；如果 delta 等于完整包也无妨
-                pass
+        delta_info = self._compute_delta(manifest) if can_delta else None
         self._ui_after(
             0, lambda: self._ask_update(tag, body, url, size, manifest, delta_info)
         )
@@ -174,6 +202,7 @@ class Updater:
             extra = ""
             if using_delta and delta_info.get("changed_count"):
                 extra = f"（增量：{delta_info['changed_count']} 个文件变更）"
+            asset_name = self._delta_name(tag) if using_delta else self._update_name(tag)
 
             if self.on_prompt:
                 self.on_prompt(
@@ -182,7 +211,7 @@ class Updater:
                         "tag": tag,
                         "body": notes,
                         "size_text": size_text + (f" {extra}" if extra else ""),
-                        "asset": self._delta_name(tag) if using_delta else self._update_name(tag),
+                        "asset": asset_name,
                         "url": url,
                         "download": lambda: self._download_and_apply(tag, url, manifest),
                         "dismiss": lambda: setattr(self, "_busy", False),
@@ -192,7 +221,7 @@ class Updater:
 
             msg = (
                 f"发现新版本：v{self.current_version} → {tag}\n\n"
-                f"更新包：{self._update_name(tag)}（{size_text}）{extra}\n\n"
+                f"更新包：{asset_name}（{size_text}）{extra}\n\n"
                 f"更新说明：\n{notes}\n\n"
                 f"确定要下载并安装吗？安装时程序会自动退出并重启。"
             )
@@ -304,14 +333,8 @@ class Updater:
                     h.update(chunk)
             if h.hexdigest() != info.get("sha256"):
                 changed.append(path)
-        removed = [
-            p for p in os.listdir(app_dir)
-            if p not in ("config.json", "history.jsonl", "error.log")
-            and p not in new_files
-        ]
         return {
             "changed_count": len(changed),
-            "removed_count": len(removed),
             "total_count": len(new_files),
         }
 
@@ -457,28 +480,39 @@ class Updater:
     $allowed = @{{}}
     foreach ($f in $manifest.files) {{ $allowed[$f.path] = $true }}
 
-    # 复制 delta/update 包中存在的新文件/变更文件
+    # 1) 复制更新包里的新增/变更文件
     $srcDir = Join-Path $tempDir 'llm-usage-widget'
     Get-ChildItem -Path $srcDir -Recurse -File | ForEach-Object {{
-        $rel = $_.FullName.Substring($srcDir.Length + 1).Replace('\\', '/')
+        $rel = $_.FullName.Substring($srcDir.Length + 1) -replace '\\\\', '/'
         if ($allowed.ContainsKey($rel)) {{
-            $dest = Join-Path $appDir $rel.Replace('/', '\\')
+            $dest = Join-Path $appDir ($rel -replace '/', '\\')
             $destDir = Split-Path -Parent $dest
-            if (-not (Test-Path $destDir)) {{ New-Item -ItemType Directory -Path $destDir -Force | Out-Null }}
+            if (-not (Test-Path $destDir)) {{
+                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+            }}
             Copy-Item -Path $_.FullName -Destination $dest -Force
         }}
     }}
 
-    # 删除安装目录中不在 manifest 中的文件/目录（保留用户数据）
-    $keep = @{{ 'config.json' = $true; 'history.jsonl' = $true; 'error.log' = $true }}
-    Get-ChildItem -Path $appDir | ForEach-Object {{
-        $name = $_.Name
-        if ($keep.ContainsKey($name)) {{ return }}
-        $rel = $name.Replace('\\', '/')
-        if (-not $allowed.ContainsKey($rel)) {{
-            Remove-Item -Path $_.FullName -Recurse -Force
+    # 2) 删除 _internal 中新版已不存在的旧文件（不动根目录的卸载程序等）
+    $internalDir = Join-Path $appDir '_internal'
+    if (Test-Path $internalDir) {{
+        Get-ChildItem -Path $internalDir -Recurse -File | ForEach-Object {{
+            $rel = $_.FullName.Substring($appDir.Length + 1) -replace '\\\\', '/'
+            if (-not $allowed.ContainsKey($rel)) {{
+                Remove-Item -Path $_.FullName -Force
+            }}
+        }}
+        Get-ChildItem -Path $internalDir -Recurse -Directory |
+            Sort-Object {{ $_.FullName.Length }} -Descending | ForEach-Object {{
+            if ((Get-ChildItem -Path $_.FullName -Force | Measure-Object).Count -eq 0) {{
+                Remove-Item -Path $_.FullName -Force
+            }}
         }}
     }}
+
+    # 3) 清理旧版带版本号的 exe
+    Get-ChildItem -Path $appDir -Filter 'llm-usage-widget_v*.exe' | Remove-Item -Force
 """
         else:
             manifest_block = f"""

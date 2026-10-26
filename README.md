@@ -7,12 +7,16 @@ Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **�
 > 适用于任何 Windows 10/11 电脑，无需安装 Python 或任何依赖。
 
 1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中选择下载：
-   - **推荐** `llm-usage-widget_vX.X.X_setup.exe`（安装包）：双击运行安装向导，默认安装到 `%LocalAppData%\LLM Usage Widget`，无需管理员权限；安装完成后开始菜单会出现「额度悬浮窗」，以后可在悬浮窗上**右键 → 检查更新…**一键升级
+   - **推荐** `llm-usage-widget_vX.X.X_setup.exe`（安装包）：双击运行安装向导，**安装位置可自选**（默认 `%LocalAppData%\LLM Usage Widget`，无需管理员权限）；安装完成后开始菜单会出现「额度悬浮窗」，以后可在悬浮窗上**右键 → 检查更新…**一键升级
    - 或 `llm-usage-widget_vX.X.X.exe`（单文件版，约 13 MB）：双击即用，便于随身携带；同样支持右键「检查更新…」
 2. 首次运行若弹出 Windows SmartScreen 蓝色提示，点「更多信息」→「仍要运行」
 3. 首次运行会弹出设置窗口，填入密钥即可开始使用
 
-EXE 由 PyInstaller 打包，内嵌完整 Python 运行环境；密钥只保存在本机 `config.json`，不经过任何第三方服务器。
+EXE 由 PyInstaller 打包，内嵌完整 Python 运行环境；密钥只保存在本机
+`%APPDATA%\LLM Usage Widget\config.json`，不经过任何第三方服务器。
+
+**用户数据与安装目录分离**：`config.json` / `history.jsonl` / `error.log` 固定放在
+`%APPDATA%\LLM Usage Widget`，换安装位置、重装、升级都不会丢配置。
 
 ## 功能特性
 
@@ -69,7 +73,8 @@ pyinstaller --onefile --noconsole --clean --collect-all customtkinter \
 | 智谱 | API Key | [智谱开放平台](https://open.bigmodel.cn/) → API Keys |
 | 火山引擎 | AccessKey ID / Secret | [火山引擎控制台](https://console.volcengine.com/) → 右上角头像 → API 访问密钥（AKLT 开头，需 `ArkFullAccess` 或 `ark:GetAFPUsage` 只读权限） |
 
-> 密钥只保存在本机 `config.json`（与 EXE / 源码同目录，已被 `.gitignore` 排除），软件不经过任何第三方服务器。
+> 打包版密钥只保存在 `%APPDATA%\LLM Usage Widget\config.json`；源码运行则在源码目录
+> 的 `config.json`（已被 `.gitignore` 排除）。软件不经过任何第三方服务器。
 
 ## 目录结构
 

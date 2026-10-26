@@ -37,6 +37,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: 解析上一个 tag
+        id: prev
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -1 || true)
+          echo "上一个 tag：${PREV_TAG:-无}"
+          echo "tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
 
       - name: 安装 Python
         uses: actions/setup-python@v5
@@ -65,22 +76,26 @@ jobs:
         shell: bash
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
         run: |
           VERSION="${TAG#v}"
-          python scripts/generate_manifest.py "dist/onedir/llm-usage-widget" "${VERSION}" \
+          PREV_VERSION=""
+          if [ -n "$PREV_TAG" ]; then PREV_VERSION="${PREV_TAG#v}"; fi
+          python scripts/generate_manifest.py \
+            "dist/onedir/llm-usage-widget" "${VERSION}" "${PREV_VERSION}" \
             > "dist/llm-usage-widget_v${VERSION}_manifest.json"
 
       - name: 尝试生成增量更新包 delta.zip
         shell: bash
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
         run: |
           VERSION="${TAG#v}"
-          PREV_TAG=$(git tag --sort=-v:refname | head -2 | tail -1 || true)
           DELTA_ZIP="dist/llm-usage-widget_v${VERSION}_delta.zip"
           DELTA_JSON="dist/llm-usage-widget_v${VERSION}_delta.json"
           echo "当前 tag: $TAG, 上一个 tag: ${PREV_TAG:-无}"
-          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$TAG" ]; then
+          if [ -n "$PREV_TAG" ]; then
             mkdir -p /tmp/prev
             MANIFEST_URL="https://github.com/joeyxd19/llm-usage-widget/releases/download/${PREV_TAG}/llm-usage-widget_${PREV_TAG}_manifest.json"
             echo "尝试下载上一版本 manifest: $MANIFEST_URL"
@@ -90,12 +105,15 @@ jobs:
                 "dist/onedir/llm-usage-widget" \
                 "dist/llm-usage-widget_v${VERSION}_manifest.json" \
                 "/tmp/prev/manifest.json" \
-                "$DELTA_ZIP" "$DELTA_JSON" || true
+                "$DELTA_ZIP" "$DELTA_JSON" \
+                || echo "delta 生成失败，将回退为完整包"
             else
               echo "无法下载上一版本 manifest，delta 将回退为完整包"
             fi
           fi
-          if [ ! -f "$DELTA_ZIP" ]; then
+          if [ -f "$DELTA_ZIP" ]; then
+            ls -lh "$DELTA_ZIP"
+          else
             echo "未生成 delta.zip，回退到复制完整 update.zip"
           fi
 

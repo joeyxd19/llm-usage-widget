@@ -28,10 +28,12 @@ def generate_delta(new_dir, new_manifest, old_manifest_path, out_zip, out_json):
 
     removed = [p for p in old_files if p not in new_files]
 
+    # 与完整 update.zip 保持同样的顶层目录，更新脚本才能用同一套解压逻辑
+    prefix = "llm-usage-widget/"
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in changed:
             src = os.path.join(new_dir, path.replace("/", os.sep))
-            zf.write(src, path)
+            zf.write(src, prefix + path)
 
     delta_info = {
         "new_version": new_manifest.get("version"),

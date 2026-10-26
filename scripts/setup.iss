@@ -1,9 +1,11 @@
 ; 额度悬浮窗 Inno Setup 安装脚本
-; 安装到 %LocalAppData%\LLM Usage Widget，无需管理员权限
+; 默认安装到 %LocalAppData%\LLM Usage Widget（无需管理员），用户可在向导中改到任意位置
+; 用户数据（config.json / history.jsonl / error.log）不放在安装目录，
+; 而是固定在 %APPDATA%\LLM Usage Widget，重装或换目录都不会丢
 
 #define MyAppName "额度悬浮窗"
 #define MyAppNameEn "LLM Usage Widget"
-#define MyAppVersion "2.7.2"
+#define MyAppVersion "2.7.3"
 #define MyAppPublisher "joeyxd19"
 #define MyAppURL "https://github.com/joeyxd19/llm-usage-widget"
 #define MyAppExeName "llm-usage-widget.exe"
@@ -18,7 +20,9 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={localappdata}\{#MyAppNameEn}
-DisableDirPage=yes
+DisableDirPage=no
+UsePreviousAppDir=yes
+DirExistsWarning=auto
 DisableProgramGroupPage=yes
 DefaultGroupName={#MyAppName}
 OutputDir=..\dist\installer

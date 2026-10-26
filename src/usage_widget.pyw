@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.7.2 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.7.3 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.7.3 更新：
+- **安装位置可自选**：安装向导恢复"选择安装位置"页，默认
+  `%LocalAppData%\\LLM Usage Widget`，可改到任意目录；重装时会记住上次位置
+- **用户数据与安装目录解耦**：`config.json` / `history.jsonl` / `error.log`
+  统一放到 `%APPDATA%\\LLM Usage Widget`，换安装目录、重装、升级都不会丢配置；
+  首次运行会自动把旧版留在程序目录里的数据搬过来
+- **增量更新修正**：新增 `previous` 字段，仅当上一版正好是当前运行版本时才使用
+  delta 包，跨版本升级自动回退完整包；delta 包与完整包目录结构统一
 
 v2.7.2 更新：
 - **增量更新**：每次 Release 同时上传 `manifest.json` 和 `*_delta.zip`；更新时先
@@ -123,6 +132,7 @@ import hashlib
 import hmac
 import json
 import os
+import shutil
 import sys
 import time
 import threading
@@ -158,7 +168,7 @@ except Exception:
     Updater = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.7.2"
+APP_VERSION = "2.7.3"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -209,13 +219,57 @@ SCALE_SHORT = {0.75: "75%", 0.9: "90%", 1.0: "100%", 1.15: "115%", 1.3: "130%"}
 
 
 def app_dir():
+    """程序所在目录（安装位置由用户在安装时决定）。"""
     if getattr(sys, "frozen", False):  # PyInstaller 打包后
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 
+DATA_DIR_NAME = "LLM Usage Widget"
+_migrated_legacy = False
+
+
+def data_dir():
+    """用户数据目录（config.json / history.jsonl / error.log）。
+
+    打包版固定放在 %APPDATA%\\LLM Usage Widget，与安装位置解耦：
+    重装、换目录、升级都不会丢配置。源码运行仍用源码目录，便于调试。
+    首次运行时若旧版数据还在程序目录，会自动复制过来。
+    """
+    global _migrated_legacy
+    if not getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(__file__))
+
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    target = os.path.join(base, DATA_DIR_NAME)
+    try:
+        os.makedirs(target, exist_ok=True)
+    except Exception:
+        return app_dir()
+
+    if not _migrated_legacy:
+        _migrated_legacy = True
+        _migrate_legacy_data(target)
+    return target
+
+
+def _migrate_legacy_data(target):
+    """把旧版放在程序目录里的用户数据搬到新位置（不覆盖已有文件）。"""
+    legacy = app_dir()
+    if os.path.abspath(target) == os.path.abspath(legacy):
+        return
+    for name in (CONFIG_NAME, HISTORY_NAME, "error.log"):
+        src = os.path.join(legacy, name)
+        dst = os.path.join(target, name)
+        if os.path.isfile(src) and not os.path.exists(dst):
+            try:
+                shutil.copy2(src, dst)
+            except Exception:
+                pass
+
+
 def config_path():
-    return os.path.join(app_dir(), CONFIG_NAME)
+    return os.path.join(data_dir(), CONFIG_NAME)
 
 
 def _deep_merge(dst, src):
@@ -282,7 +336,7 @@ _history_last_prune = 0.0
 
 
 def history_path():
-    return os.path.join(app_dir(), HISTORY_NAME)
+    return os.path.join(data_dir(), HISTORY_NAME)
 
 
 def append_history(record):
@@ -663,7 +717,7 @@ def acquire_single_instance_mutex():
 def _excepthook(exc_type, exc, tb):
     """无控制台模式下把崩溃写入 error.log，便于排查。"""
     try:
-        with open(os.path.join(app_dir(), "error.log"), "a", encoding="utf-8") as f:
+        with open(os.path.join(data_dir(), "error.log"), "a", encoding="utf-8") as f:
             f.write("\n[%s]\n" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             traceback.print_exception(exc_type, exc, tb, file=f)
     except Exception:
@@ -1407,7 +1461,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
 
     def _build_providers_page(self):
         page = self._page("providers", "供应商密钥",
-                          "密钥只保存在本机 config.json，不经过任何第三方服务器")
+                          "密钥只保存在 %APPDATA%\\LLM Usage Widget\\config.json，不经过任何第三方服务器")
         card = self._card(page, "智谱 Coding Plan", C_ACCENT_Z, self.z_en)
         self._entry_field(card, "API Key", self.z_key, secret=True,
                           hint="智谱开放平台 → API Keys 页面")
@@ -2020,7 +2074,7 @@ class SettingsDialog(tk.Toplevel):
 
     def _build_providers_page(self):
         page = self._new_page("providers", "供应商密钥",
-                              "密钥只保存在本机 config.json，不经过任何第三方服务器")
+                              "密钥只保存在 %APPDATA%\\LLM Usage Widget\\config.json，不经过任何第三方服务器")
         card = self._card(page, "智谱 Coding Plan", C_ACCENT_Z, self.z_en)
         self._field(card, "API Key", self.z_key, secret=True,
                     hint="智谱开放平台 → API Keys 页面")
