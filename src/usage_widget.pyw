@@ -4,7 +4,7 @@
 
 v2.7.0 更新：
 - **安装包化**：新增 Inno Setup 安装包 `*_setup.exe`，默认安装到
-  `%LocalAppData%\LLM Usage Widget`，无需管理员权限，自动创建开始菜单快捷方式
+  `%LocalAppData%\\LLM Usage Widget`，无需管理员权限，自动创建开始菜单快捷方式
 - **停止发布便携文件夹版**：`*_portable.zip` 不再作为用户下载形态，改为仅作为
   自动更新补丁包 `*_update.zip` 存在
 - **安装版自动更新**：`updater.py` 识别安装目录下的 `unins000.exe`，对安装版
