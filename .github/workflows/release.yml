@@ -83,12 +83,12 @@ jobs:
             -DestinationPath "dist/llm-usage-widget_v${v}_update.zip" -Force
 
       - name: 编译安装包 Setup.exe
-        shell: bash
+        shell: pwsh
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          VERSION="${TAG#v}"
-          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${VERSION}" scripts/setup.iss
+          $v = $env:TAG.Substring(1)
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$v" scripts/setup.iss
 
       - name: 上传到 Release
         uses: softprops/action-gh-release@v2
