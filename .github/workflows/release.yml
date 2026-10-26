@@ -61,6 +61,39 @@ jobs:
             --name "llm-usage-widget" \
             src/usage_widget.pyw
 
+      - name: 生成当前版本 manifest
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          python scripts/generate_manifest.py "dist/onedir/llm-usage-widget" "${VERSION}" \
+            > "dist/llm-usage-widget_v${VERSION}_manifest.json"
+
+      - name: 尝试生成增量更新包 delta.zip
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          PREV_TAG=$(git tag --sort=-v:refname | head -2 | tail -1 || true)
+          DELTA_ZIP="dist/llm-usage-widget_v${VERSION}_delta.zip"
+          DELTA_JSON="dist/llm-usage-widget_v${VERSION}_delta.json"
+          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$TAG" ]; then
+            mkdir -p /tmp/prev
+            if curl -fsSL -o /tmp/prev/manifest.json \
+              "https://github.com/joeyxd19/llm-usage-widget/releases/download/${PREV_TAG}/llm-usage-widget_${PREV_TAG}_manifest.json" 2>/dev/null; then
+              python scripts/generate_delta.py \
+                "dist/onedir/llm-usage-widget" \
+                "dist/llm-usage-widget_v${VERSION}_manifest.json" \
+                "/tmp/prev/manifest.json" \
+                "$DELTA_ZIP" "$DELTA_JSON" || true
+            fi
+          fi
+          if [ ! -f "$DELTA_ZIP" ]; then
+            echo "未生成 delta.zip，回退到复制完整 update.zip"
+          fi
+
       - name: 打包单文件 EXE（便携备选）
         shell: bash
         env:
@@ -79,6 +112,9 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           $v = $env:TAG.Substring(1)
+          # 把 manifest.json 也放进 update.zip，便于离线核对
+          Copy-Item "dist/llm-usage-widget_v${v}_manifest.json" `
+            "dist/onedir/llm-usage-widget/manifest.json" -Force
           Compress-Archive -Path "dist/onedir/llm-usage-widget" `
             -DestinationPath "dist/llm-usage-widget_v${v}_update.zip" -Force
 
@@ -90,11 +126,24 @@ jobs:
           $v = $env:TAG.Substring(1)
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$v" scripts/setup.iss
 
+      - name: 补齐 delta.zip（生成失败时回退为完整 update.zip）
+        shell: pwsh
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          $v = $env:TAG.Substring(1)
+          $delta = "dist/llm-usage-widget_v${v}_delta.zip"
+          if (-not (Test-Path $delta)) {
+            Copy-Item "dist/llm-usage-widget_v${v}_update.zip" $delta -Force
+          }
+
       - name: 上传到 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           files: |
             dist/onefile/*.exe
-            dist/llm-usage-widget_v*_update.zip
             dist/installer/*.exe
+            dist/llm-usage-widget_v*_update.zip
+            dist/llm-usage-widget_v*_delta.zip
+            dist/llm-usage-widget_v*_manifest.json

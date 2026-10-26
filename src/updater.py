@@ -121,27 +121,48 @@ class Updater:
                 )
             return
 
-        asset_name = self._asset_name(tag)
-        asset = next(
-            (a for a in assets if a.get("name") == asset_name), None
+        # 优先使用增量包；如不存在则回退完整 update.zip
+        manifest_asset = next(
+            (a for a in assets if a.get("name") == self._manifest_name(tag)), None
         )
-        if asset is None:
+        delta_asset = next(
+            (a for a in assets if a.get("name") == self._delta_name(tag)), None
+        update_asset = next(
+            (a for a in assets if a.get("name") == self._update_name(tag)), None
+        )
+        chosen = delta_asset or update_asset
+        if chosen is None or manifest_asset is None:
             self._busy = False
             self._ui_after(
                 0,
                 lambda: self._on_error(
                     "未找到更新包",
-                    f"Release {tag} 中没有 {asset_name}，请去 Releases 页面手动下载。",
+                    f"Release {tag} 缺少必要资产，请去 Releases 页面手动下载。",
                     silent,
                 ),
             )
             return
 
-        url = asset["browser_download_url"]
-        size = asset.get("size", 0)
-        self._ui_after(0, lambda: self._ask_update(tag, body, url, size))
+        # 下载 manifest 计算实际变更（用于显示更精确的大小）
+        manifest = None
+        try:
+            manifest = self._download_manifest(manifest_asset["browser_download_url"])
+        except Exception:
+            pass
 
-    def _ask_update(self, tag, body, url, size):
+        url = chosen["browser_download_url"]
+        size = chosen.get("size", 0)
+        delta_info = None
+        if manifest:
+            delta_info = self._compute_delta(manifest)
+            if delta_info and delta_info.get("changed_count", 0):
+                # 用 delta 包实际大小更准确；如果 delta 等于完整包也无妨
+                pass
+        self._ui_after(
+            0, lambda: self._ask_update(tag, body, url, size, manifest, delta_info)
+        )
+
+    def _ask_update(self, tag, body, url, size, manifest=None, delta_info=None):
         try:
             mb = size / (1024 * 1024) if size else 0
             size_text = f"约 {mb:.1f} MB" if mb else "大小未知"
@@ -149,16 +170,21 @@ class Updater:
             if len(notes) > 400:
                 notes = notes[:400] + "…"
 
+            using_delta = delta_info is not None and url.endswith("_delta.zip")
+            extra = ""
+            if using_delta and delta_info.get("changed_count"):
+                extra = f"（增量：{delta_info['changed_count']} 个文件变更）"
+
             if self.on_prompt:
                 self.on_prompt(
                     {
                         "current": self.current_version,
                         "tag": tag,
                         "body": notes,
-                        "size_text": size_text,
-                        "asset": self._asset_name(tag),
+                        "size_text": size_text + (f" {extra}" if extra else ""),
+                        "asset": self._delta_name(tag) if using_delta else self._update_name(tag),
                         "url": url,
-                        "download": lambda: self._download_and_apply(tag, url),
+                        "download": lambda: self._download_and_apply(tag, url, manifest),
                         "dismiss": lambda: setattr(self, "_busy", False),
                     }
                 )
@@ -166,21 +192,21 @@ class Updater:
 
             msg = (
                 f"发现新版本：v{self.current_version} → {tag}\n\n"
-                f"更新包：{self._asset_name(tag)}（{size_text}）\n\n"
+                f"更新包：{self._update_name(tag)}（{size_text}）{extra}\n\n"
                 f"更新说明：\n{notes}\n\n"
                 f"确定要下载并安装吗？安装时程序会自动退出并重启。"
             )
             if messagebox.askyesno("检查更新", msg):
-                self._download_and_apply(tag, url)
+                self._download_and_apply(tag, url, manifest)
             else:
                 self._busy = False
         except Exception:
             self._busy = False
 
-    def _download_and_apply(self, version, url):
+    def _download_and_apply(self, version, url, manifest=None):
         self._show_progress(f"正在下载 v{version} …")
         threading.Thread(
-            target=self._download_worker, args=(version, url), daemon=True
+            target=self._download_worker, args=(version, url, manifest), daemon=True
         ).start()
 
     def _show_progress(self, text):
@@ -235,11 +261,59 @@ class Updater:
 
     # ---------------- 网络 ----------------
 
+    def _version_from_tag(self, tag):
+        return tag[1:] if tag and tag.lower().startswith("v") else tag
+
+    def _update_name(self, tag):
+        return f"llm-usage-widget_v{self._version_from_tag(tag)}_update.zip"
+
+    def _delta_name(self, tag):
+        return f"llm-usage-widget_v{self._version_from_tag(tag)}_delta.zip"
+
+    def _manifest_name(self, tag):
+        return f"llm-usage-widget_v{self._version_from_tag(tag)}_manifest.json"
+
     def _asset_name(self, tag):
-        version = tag[1:] if tag and tag.lower().startswith("v") else tag
         if self.pkg in ("onedir", "installed"):
-            return f"llm-usage-widget_v{version}_update.zip"
-        return f"llm-usage-widget_v{version}.exe"
+            return self._update_name(tag)
+        return f"llm-usage-widget_v{self._version_from_tag(tag)}.exe"
+
+    def _download_manifest(self, url):
+        req = urllib.request.Request(url, headers={"User-Agent": APP_NAME})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def _compute_delta(self, manifest):
+        """对比本地文件与 manifest，返回变更统计。"""
+        import hashlib
+
+        app_dir = os.path.dirname(os.path.abspath(sys.executable))
+        new_files = {f["path"]: f for f in manifest.get("files", [])}
+        changed = []
+        for path, info in new_files.items():
+            local = os.path.join(app_dir, path.replace("/", os.sep))
+            if not os.path.isfile(local):
+                changed.append(path)
+                continue
+            h = hashlib.sha256()
+            with open(local, "rb") as f:
+                while True:
+                    chunk = f.read(256 * 1024)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+            if h.hexdigest() != info.get("sha256"):
+                changed.append(path)
+        removed = [
+            p for p in os.listdir(app_dir)
+            if p not in ("config.json", "history.jsonl", "error.log")
+            and p not in new_files
+        ]
+        return {
+            "changed_count": len(changed),
+            "removed_count": len(removed),
+            "total_count": len(new_files),
+        }
 
     def _fetch_latest(self):
         req = urllib.request.Request(
@@ -253,8 +327,8 @@ class Updater:
             data = json.loads(resp.read().decode("utf-8"))
         return data["tag_name"], data.get("body", ""), data.get("assets", [])
 
-    def _download_worker(self, version, url):
-        ext = ".zip" if self.pkg == "onedir" else ".exe"
+    def _download_worker(self, version, url, manifest=None):
+        ext = ".zip" if self.pkg in ("onedir", "installed") else ".exe"
         dest = os.path.join(
             tempfile.gettempdir(),
             f"llm-usage-widget_update_v{version}{ext}",
@@ -279,16 +353,16 @@ class Updater:
                             self._ui_after(
                                 0, lambda p=pct: self._set_progress(p)
                             )
-            self._ui_after(0, lambda: self._on_downloaded(version, dest))
+            self._ui_after(0, lambda: self._on_downloaded(version, dest, manifest))
         except Exception as exc:
             self._ui_after(
                 0, lambda: self._on_error("下载失败", str(exc), False)
             )
 
-    def _on_downloaded(self, version, dest):
+    def _on_downloaded(self, version, dest, manifest=None):
         self._set_progress(100, "下载完成，准备安装…")
         try:
-            self._spawn_updater(version, dest)
+            self._spawn_updater(version, dest, manifest)
         except Exception as exc:
             self._on_error("更新失败", f"无法启动安装程序：{exc}", False)
             return
@@ -303,7 +377,7 @@ class Updater:
 
     # ---------------- 安装脚本 ----------------
 
-    def _spawn_updater(self, version, dest):
+    def _spawn_updater(self, version, dest, manifest=None):
         if os.name != "nt":
             raise RuntimeError("自动更新仅支持 Windows 打包版")
 
@@ -311,8 +385,16 @@ class Updater:
         app_dir = os.path.dirname(exe)
         pid = os.getpid()
 
-        if self.pkg == "onedir":
-            ps = self._build_ps_onedir(pid, app_dir, dest)
+        manifest_path = None
+        if manifest:
+            manifest_path = os.path.join(
+                tempfile.gettempdir(), "llm-usage-widget-update-manifest.json"
+            )
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f, ensure_ascii=False)
+
+        if self.pkg in ("onedir", "installed"):
+            ps = self._build_ps_onedir(pid, app_dir, dest, manifest_path)
         else:
             ps = self._build_ps_onefile(pid, exe, dest)
 
@@ -354,18 +436,67 @@ class Updater:
         cmd = '""%s""' % exe_path
         return 'CreateObject("WScript.Shell").Run "%s", 0, False\n' % cmd
 
-    def _build_ps_onedir(self, pid, app_dir, zip_path):
+    def _build_ps_onedir(self, pid, app_dir, zip_path, manifest_path=None):
         app = _ps_escape(app_dir)
         zip_ = _ps_escape(zip_path)
         temp_dir = _ps_escape(
             os.path.join(tempfile.gettempdir(), "llm-usage-widget-update")
         )
+        manifest = _ps_escape(manifest_path) if manifest_path else ""
         exe_name = "llm-usage-widget.exe"
         new_exe = _ps_escape(os.path.join(app_dir, exe_name))
         vbs_path = _ps_escape(self._autostart_vbs_path())
         error_log = _ps_escape(
             os.path.join(tempfile.gettempdir(), "llm-usage-widget-update-error.log")
         )
+
+        if manifest_path:
+            manifest_block = f"""
+    $manifestPath = '{manifest}'
+    $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
+    $allowed = @{{}}
+    foreach ($f in $manifest.files) {{ $allowed[$f.path] = $true }}
+
+    # 复制 delta/update 包中存在的新文件/变更文件
+    $srcDir = Join-Path $tempDir 'llm-usage-widget'
+    Get-ChildItem -Path $srcDir -Recurse -File | ForEach-Object {{
+        $rel = $_.FullName.Substring($srcDir.Length + 1).Replace('\\', '/')
+        if ($allowed.ContainsKey($rel)) {{
+            $dest = Join-Path $appDir $rel.Replace('/', '\\')
+            $destDir = Split-Path -Parent $dest
+            if (-not (Test-Path $destDir)) {{ New-Item -ItemType Directory -Path $destDir -Force | Out-Null }}
+            Copy-Item -Path $_.FullName -Destination $dest -Force
+        }}
+    }}
+
+    # 删除安装目录中不在 manifest 中的文件/目录（保留用户数据）
+    $keep = @{{ 'config.json' = $true; 'history.jsonl' = $true; 'error.log' = $true }}
+    Get-ChildItem -Path $appDir | ForEach-Object {{
+        $name = $_.Name
+        if ($keep.ContainsKey($name)) {{ return }}
+        $rel = $name.Replace('\\', '/')
+        if (-not $allowed.ContainsKey($rel)) {{
+            Remove-Item -Path $_.FullName -Recurse -Force
+        }}
+    }}
+"""
+        else:
+            manifest_block = f"""
+    $oldInternal = Join-Path $appDir '_internal'
+    $newInternal = Join-Path $newDir '_internal'
+    if (Test-Path $oldInternal) {{
+        Remove-Item -Path $oldInternal -Recurse -Force
+    }}
+    Copy-Item -Path $newInternal -Destination $appDir -Recurse -Force
+
+    $oldExe = Join-Path $appDir $exeName
+    if (Test-Path $oldExe) {{
+        Remove-Item -Path $oldExe -Force
+    }}
+    Copy-Item -Path (Join-Path $newDir $exeName) -Destination $appDir -Force
+
+    Get-ChildItem -Path $appDir -Filter 'llm-usage-widget_v*.exe' | Remove-Item -Force
+"""
 
         return f"""try {{
     $ErrorActionPreference = 'Stop'
@@ -385,23 +516,10 @@ class Updater:
 
     Expand-Archive -Path $zip -DestinationPath $tempDir -Force
     $newDir = Join-Path $tempDir 'llm-usage-widget'
-
-    $oldInternal = Join-Path $appDir '_internal'
-    $newInternal = Join-Path $newDir '_internal'
-    if (Test-Path $oldInternal) {{
-        Remove-Item -Path $oldInternal -Recurse -Force
-    }}
-    Copy-Item -Path $newInternal -Destination $appDir -Recurse -Force
-
-    $oldExe = Join-Path $appDir $exeName
-    if (Test-Path $oldExe) {{
-        Remove-Item -Path $oldExe -Force
-    }}
-    Copy-Item -Path (Join-Path $newDir $exeName) -Destination $appDir -Force
-
-    Get-ChildItem -Path $appDir -Filter 'llm-usage-widget_v*.exe' | Remove-Item -Force
+{manifest_block}
 
     $vbs = '{vbs_path}'
+    $oldExe = Join-Path $appDir $exeName
     if (Test-Path $vbs) {{
         $cmd = '""' + $oldExe + '""'
         $content = 'CreateObject(\"WScript.Shell\").Run \"' + $cmd + '\", 0, False' + "`n"
@@ -410,6 +528,7 @@ class Updater:
 
     Remove-Item -Path $tempDir -Recurse -Force
     Remove-Item -Path $zip -Force
+    if ('{manifest}' -ne '') {{ Remove-Item -Path '{manifest}' -Force -ErrorAction SilentlyContinue }}
     Start-Process -FilePath $oldExe -WorkingDirectory $appDir
 }} catch {{
     $_.Exception.Message + '`n' + $_.ScriptStackTrace | Out-File -FilePath '{error_log}' -Encoding utf8

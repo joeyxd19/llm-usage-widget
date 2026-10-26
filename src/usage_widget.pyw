@@ -1,6 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.7.1 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.7.2 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.7.2 更新：
+- **增量更新**：每次 Release 同时上传 `manifest.json` 和 `*_delta.zip`；更新时先
+  下载 manifest 比对本地文件哈希，只下载变更文件组成的 delta 包，大幅减少更新
+  流量和更新时间
+- **自动回退**：如果 delta 包生成失败或不可用，自动回退到下载完整 `*_update.zip`
+- **更新提示显示变更数**：气泡/对话框中显示「增量：X 个文件变更」
 
 v2.7.1 更新：
 - **静默后台检查更新**：启动 30 秒后自动在后台检测 GitHub Releases 新版，发现
@@ -151,7 +158,7 @@ except Exception:
     Updater = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.7.1"
+APP_VERSION = "2.7.2"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
