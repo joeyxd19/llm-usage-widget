@@ -72,9 +72,10 @@ def _ps_escape(s):
 
 
 class Updater:
-    def __init__(self, root, current_version):
+    def __init__(self, root, current_version, on_prompt=None):
         self.root = root
         self.current_version = current_version
+        self.on_prompt = on_prompt   # 静默检查时发现新版的回调(tag, body, url, size)
         self.pkg = package_type()
         self._busy = False
         self._window = None
@@ -147,6 +148,21 @@ class Updater:
             notes = (body or "暂无更新说明。").strip()
             if len(notes) > 400:
                 notes = notes[:400] + "…"
+
+            if self.on_prompt:
+                self.on_prompt(
+                    {
+                        "current": self.current_version,
+                        "tag": tag,
+                        "body": notes,
+                        "size_text": size_text,
+                        "asset": self._asset_name(tag),
+                        "url": url,
+                        "download": lambda: self._download_and_apply(tag, url),
+                        "dismiss": lambda: setattr(self, "_busy", False),
+                    }
+                )
+                return
 
             msg = (
                 f"发现新版本：v{self.current_version} → {tag}\n\n"

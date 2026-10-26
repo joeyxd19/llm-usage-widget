@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.7.0 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.7.1 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.7.1 更新：
+- **静默后台检查更新**：启动 30 秒后自动在后台检测 GitHub Releases 新版，发现
+  新版时在屏幕右下角弹出可点击气泡，显示版本、更新包大小和更新说明；点「立即
+  更新」开始下载并自动重启，点「忽略」或 15 秒无操作后气泡自动消失
+- **保留手动检查入口**：右键菜单「检查更新…」继续保留，主动触发时仍弹原对话框
 
 v2.7.0 更新：
 - **安装包化**：新增 Inno Setup 安装包 `*_setup.exe`，默认安装到
@@ -145,7 +151,7 @@ except Exception:
     Updater = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.7.1"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -2172,7 +2178,11 @@ class UsageWidget:
         # 菜单单选项（右键菜单贴边开关 / 配色主题）
         self.dock_var = tk.BooleanVar(value=bool(self.cfg.get("edge_dock", True)))
         self.theme_var = tk.StringVar(value=str(self.cfg.get("theme", "auto") or "auto"))
-        self.updater = Updater(self.root, APP_VERSION) if (Updater and TK_AVAILABLE) else None
+        self.updater = (
+            Updater(self.root, APP_VERSION, on_prompt=self._show_update_bubble)
+            if (Updater and TK_AVAILABLE)
+            else None
+        )
         self._build_window()
         self._build_menu()
         self._bind_events()
@@ -2185,6 +2195,9 @@ class UsageWidget:
             self.root.after(500, self.open_settings)
         self.root.after(300, self.refresh_async)
         self._start_topmost_guard()
+        if self.updater:
+            # 启动 30 秒后后台静默检查更新；发现新版时右下角弹气泡提示
+            self.root.after(30_000, self._silent_update_check)
 
     # ---------------- 尺寸与字体 ----------------
 
@@ -3633,6 +3646,120 @@ class UsageWidget:
             tw.after(1600, _fade)
         except Exception:
             self.status_text = msg  # 兜底：气泡异常时至少记录状态
+
+    def _silent_update_check(self):
+        """后台静默检查更新。仅在打包版且未处于初始设置状态时执行。"""
+        try:
+            if not self.updater or self._needs_setup():
+                return
+            self.updater.check(silent=True)
+        except Exception:
+            pass
+
+    def _show_update_bubble(self, info):
+        """发现新版时在屏幕右下角弹出可点击气泡。"""
+        try:
+            tag = info["tag"]
+            body = info["body"]
+            size_text = info["size_text"]
+            download = info["download"]
+            dismiss = info["dismiss"]
+
+            tw = tk.Toplevel(self.root)
+            tw.overrideredirect(True)
+            tw.attributes("-topmost", True)
+            tw.attributes("-alpha", 0.0)
+            bg = self.t.get("card", "#1e2128")
+            fg = self.t.get("text", "#eceef2")
+            accent = self.t.get("accent", "#7c8cff")
+
+            frame = tk.Frame(tw, bg=bg, padx=16, pady=12)
+            frame.pack(fill="both", expand=True)
+
+            title = tk.Label(
+                frame,
+                text=f"发现新版本 {tag}",
+                font=(self.font_family, self.fs_text + 1, "bold"),
+                bg=bg,
+                fg=fg,
+                anchor="w",
+            )
+            title.pack(fill="x", pady=(0, 4))
+
+            detail = f"更新包：{info['asset']}（{size_text}）\n{body}".strip()
+            tk.Label(
+                frame,
+                text=detail,
+                font=(self.font_family, self.fs_small),
+                bg=bg,
+                fg=self.t.get("muted", "#b0b6bd"),
+                anchor="w",
+                justify="left",
+                wraplength=260,
+            ).pack(fill="x", pady=(0, 10))
+
+            btn_frame = tk.Frame(frame, bg=bg)
+            btn_frame.pack(fill="x")
+
+            def _do_download():
+                tw.destroy()
+                download()
+
+            def _do_dismiss():
+                tw.destroy()
+                dismiss()
+
+            tk.Label(btn_frame, text="", bg=bg).pack(side="left", expand=True)
+            tk.Button(
+                btn_frame,
+                text="忽略",
+                font=(self.font_family, self.fs_small),
+                bg=bg,
+                fg=fg,
+                activebackground=bg,
+                activeforeground=fg,
+                relief="flat",
+                command=_do_dismiss,
+            ).pack(side="right", padx=(8, 0))
+            tk.Button(
+                btn_frame,
+                text="立即更新",
+                font=(self.font_family, self.fs_small, "bold"),
+                bg=accent,
+                fg="#ffffff",
+                activebackground=accent,
+                activeforeground="#ffffff",
+                relief="flat",
+                padx=12,
+                pady=4,
+                command=_do_download,
+            ).pack(side="right")
+
+            # 定位到屏幕右下角，留 16px 边距
+            tw.update_idletasks()
+            w = tw.winfo_reqwidth()
+            h = tw.winfo_reqheight()
+            sw = tw.winfo_screenwidth()
+            sh = tw.winfo_screenheight()
+            tw.geometry(f"{w}x{h}+{sw - w - 16}+{sh - h - 16}")
+
+            # 淡入
+            def _fade_in(alpha=[0.0]):
+                if not tw.winfo_exists():
+                    return
+                alpha[0] += 0.15
+                if alpha[0] >= 1.0:
+                    tw.attributes("-alpha", 1.0)
+                    return
+                tw.attributes("-alpha", alpha[0])
+                tw.after(20, _fade_in)
+
+            _fade_in()
+
+            # 15 秒后自动消失
+            tw.after(15_000, lambda: tw.destroy() if tw.winfo_exists() else None)
+        except Exception:
+            pass
 
 
 # --------------------------------------------------------------------------
