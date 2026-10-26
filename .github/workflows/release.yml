@@ -79,15 +79,20 @@ jobs:
           PREV_TAG=$(git tag --sort=-v:refname | head -2 | tail -1 || true)
           DELTA_ZIP="dist/llm-usage-widget_v${VERSION}_delta.zip"
           DELTA_JSON="dist/llm-usage-widget_v${VERSION}_delta.json"
+          echo "当前 tag: $TAG, 上一个 tag: ${PREV_TAG:-无}"
           if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$TAG" ]; then
             mkdir -p /tmp/prev
-            if curl -fsSL -o /tmp/prev/manifest.json \
-              "https://github.com/joeyxd19/llm-usage-widget/releases/download/${PREV_TAG}/llm-usage-widget_${PREV_TAG}_manifest.json" 2>/dev/null; then
+            MANIFEST_URL="https://github.com/joeyxd19/llm-usage-widget/releases/download/${PREV_TAG}/llm-usage-widget_${PREV_TAG}_manifest.json"
+            echo "尝试下载上一版本 manifest: $MANIFEST_URL"
+            if curl -fsSL -o /tmp/prev/manifest.json "$MANIFEST_URL"; then
+              echo "已获取 $PREV_TAG 的 manifest，开始生成 delta"
               python scripts/generate_delta.py \
                 "dist/onedir/llm-usage-widget" \
                 "dist/llm-usage-widget_v${VERSION}_manifest.json" \
                 "/tmp/prev/manifest.json" \
                 "$DELTA_ZIP" "$DELTA_JSON" || true
+            else
+              echo "无法下载上一版本 manifest，delta 将回退为完整包"
             fi
           fi
           if [ ! -f "$DELTA_ZIP" ]; then
