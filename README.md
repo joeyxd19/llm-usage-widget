@@ -7,9 +7,9 @@ Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **�
 > 适用于任何 Windows 10/11 电脑，无需安装 Python 或任何依赖。
 
 1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中选择下载：
-   - **推荐** `llm-usage-widget_vX.X.X_portable.zip`（非单文件版）：解压后双击 `llm-usage-widget/llm-usage-widget.exe`，启动更快、动效更顺；以后可用右键菜单「检查更新…」一键升级
-   - 或 `llm-usage-widget_vX.X.X.exe`（单文件版，约 13 MB）：双击即用，便于携带；同样支持右键「检查更新…」
-2. 双击运行。首次运行若弹出 Windows SmartScreen 蓝色提示，点「更多信息」→「仍要运行」
+   - **推荐** `llm-usage-widget_vX.X.X_setup.exe`（安装包）：双击运行安装向导，默认安装到 `%LocalAppData%\LLM Usage Widget`，无需管理员权限；安装完成后开始菜单会出现「额度悬浮窗」，以后可在悬浮窗上**右键 → 检查更新…**一键升级
+   - 或 `llm-usage-widget_vX.X.X.exe`（单文件版，约 13 MB）：双击即用，便于随身携带；同样支持右键「检查更新…」
+2. 首次运行若弹出 Windows SmartScreen 蓝色提示，点「更多信息」→「仍要运行」
 3. 首次运行会弹出设置窗口，填入密钥即可开始使用
 
 EXE 由 PyInstaller 打包，内嵌完整 Python 运行环境；密钥只保存在本机 `config.json`，不经过任何第三方服务器。
@@ -43,17 +43,20 @@ python src/usage_widget.pyw
 
 双击 `scripts/启动.vbs`：优先启动 EXE，没有 EXE 时自动改用本机 Python 跑源码。
 
-**打包**（PyInstaller，两种形态）：
+**打包**（PyInstaller + Inno Setup）：
 
 ```bash
 pip install pyinstaller==6.22.3 customtkinter==6.0.0
 
-# 非单文件（onedir，推荐）；产物：dist/onedir/llm-usage-widget/
+# 1. 打包 onedir（安装包内容源）；产物：dist/onedir/llm-usage-widget/
 pyinstaller --noconsole --clean --collect-all customtkinter \
   --distpath dist/onedir --workpath build/onedir \
   --name llm-usage-widget src/usage_widget.pyw
 
-# 单文件 exe；产物：dist/onefile/llm-usage-widget_vX.X.X.exe
+# 2. 编译安装包 Setup.exe（需 Inno Setup 6）
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=X.X.X scripts/setup.iss
+
+# 3. 单文件 exe（便携备选）；产物：dist/onefile/llm-usage-widget_vX.X.X.exe
 pyinstaller --onefile --noconsole --clean --collect-all customtkinter \
   --distpath dist/onefile --workpath build/onefile \
   --name llm-usage-widget_vX.X.X src/usage_widget.pyw
@@ -73,15 +76,18 @@ pyinstaller --onefile --noconsole --clean --collect-all customtkinter \
 ```
 llm-usage-widget/
 ├── src/
-│   └── usage_widget.pyw    # 主程序（单文件，仅标准库）
+│   ├── usage_widget.pyw    # 主程序
+│   └── updater.py          # 应用内自动更新器
 ├── docs/
 │   ├── 使用说明.md          # 完整使用说明与常见问题
 │   └── 版本日志.md          # 各版本变更记录
 ├── scripts/
-│   └── 启动.vbs             # 静默启动脚本（EXE 优先）
-└── dist/                   # 本地 PyInstaller 打包产物（不入库，发布版见 Releases）
-    ├── onedir/             # 非单文件版（推荐，打成 zip 分发）
-    └── onefile/            # 单文件 exe
+│   ├── 启动.vbs             # 静默启动脚本（EXE 优先）
+│   └── setup.iss            # Inno Setup 安装包脚本
+└── dist/                   # 本地打包产物（不入库，发布版见 Releases）
+    ├── onedir/              # onedir 内容源，用于生成安装包/更新包
+    ├── onefile/             # 单文件 exe
+    └── installer/           # Setup.exe
 ```
 
 ## 使用说明与常见问题

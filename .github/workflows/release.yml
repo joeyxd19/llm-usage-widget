@@ -46,7 +46,10 @@ jobs:
       - name: 安装依赖
         run: pip install pyinstaller==6.22.3 customtkinter==6.0.0
 
-      - name: 打包 onedir（非单文件，推荐）
+      - name: 安装 Inno Setup
+        run: choco install innosetup -y
+
+      - name: 打包 onedir（安装包内容源）
         shell: bash
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -58,7 +61,7 @@ jobs:
             --name "llm-usage-widget" \
             src/usage_widget.pyw
 
-      - name: 打包单文件 EXE
+      - name: 打包单文件 EXE（便携备选）
         shell: bash
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -70,14 +73,22 @@ jobs:
             --name "llm-usage-widget_v${VERSION}" \
             src/usage_widget.pyw
 
-      - name: 把 onedir 打成便携版 zip
+      - name: 打包自动更新补丁包（不再作为便携版分发）
         shell: pwsh
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           $v = $env:TAG.Substring(1)
           Compress-Archive -Path "dist/onedir/llm-usage-widget" `
-            -DestinationPath "dist/llm-usage-widget_v${v}_portable.zip" -Force
+            -DestinationPath "dist/llm-usage-widget_v${v}_update.zip" -Force
+
+      - name: 编译安装包 Setup.exe
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion="${VERSION}" scripts/setup.iss
 
       - name: 上传到 Release
         uses: softprops/action-gh-release@v2
@@ -85,4 +96,5 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           files: |
             dist/onefile/*.exe
-            dist/*.zip
+            dist/llm-usage-widget_v*_update.zip
+            dist/installer/*.exe

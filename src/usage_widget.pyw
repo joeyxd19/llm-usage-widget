@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.6.5 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.7.0 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
 
-v2.6.5 更新：
-- 修复 v2.6.4 CI 打包脚本中 onedir 产物路径错误，Release 现在能正确产出
-  `*_portable.zip`，zip 内为通用名 `llm-usage-widget/llm-usage-widget.exe`
+v2.7.0 更新：
+- **安装包化**：新增 Inno Setup 安装包 `*_setup.exe`，默认安装到
+  `%LocalAppData%\LLM Usage Widget`，无需管理员权限，自动创建开始菜单快捷方式
+- **停止发布便携文件夹版**：`*_portable.zip` 不再作为用户下载形态，改为仅作为
+  自动更新补丁包 `*_update.zip` 存在
+- **安装版自动更新**：`updater.py` 识别安装目录下的 `unins000.exe`，对安装版
+  同样走"下载 update.zip → 替换 _internal/ 和 exe → 重启"的流程
 
 v2.6.4 更新：
 - 内置自动更新：右键菜单新增「检查更新…」，检测 GitHub Releases 新版，
@@ -141,7 +145,7 @@ except Exception:
     Updater = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.6.5"
+APP_VERSION = "2.7.0"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数

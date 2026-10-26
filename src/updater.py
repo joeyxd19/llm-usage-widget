@@ -35,11 +35,19 @@ def is_frozen():
 
 
 def package_type():
-    """返回当前运行形态："onedir" / "onefile" / None（源码）。"""
+    """返回当前运行形态："installed" / "onedir" / "onefile" / None（源码）。
+
+    installed 指通过 Inno Setup 安装到 %LocalAppData% 的版本，目录里会
+    有 unins000.exe；onedir 指手动解压的便携文件夹版。
+    """
     if not is_frozen():
         return None
     exe_dir = os.path.dirname(sys.executable)
-    if os.path.isdir(os.path.join(exe_dir, "_internal")):
+    has_internal = os.path.isdir(os.path.join(exe_dir, "_internal"))
+    has_unins = os.path.isfile(os.path.join(exe_dir, "unins000.exe"))
+    if has_internal and has_unins:
+        return "installed"
+    if has_internal:
         return "onedir"
     return "onefile"
 
@@ -213,8 +221,8 @@ class Updater:
 
     def _asset_name(self, tag):
         version = tag[1:] if tag and tag.lower().startswith("v") else tag
-        if self.pkg == "onedir":
-            return f"llm-usage-widget_v{version}_portable.zip"
+        if self.pkg in ("onedir", "installed"):
+            return f"llm-usage-widget_v{version}_update.zip"
         return f"llm-usage-widget_v{version}.exe"
 
     def _fetch_latest(self):
