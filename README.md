@@ -7,8 +7,8 @@ Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **�
 > 适用于任何 Windows 10/11 电脑，无需安装 Python 或任何依赖。
 
 1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中选择下载：
-   - **推荐** `llm-usage-widget_vX.X.X_portable.zip`（非单文件版）：解压后双击文件夹内的 `llm-usage-widget_vX.X.X.exe`，启动更快、动效更顺
-   - 或 `llm-usage-widget_vX.X.X.exe`（单文件版，约 13 MB）：双击即用，便于携带
+   - **推荐** `llm-usage-widget_vX.X.X_portable.zip`（非单文件版）：解压后双击 `llm-usage-widget/llm-usage-widget.exe`，启动更快、动效更顺；以后可用右键菜单「检查更新…」一键升级
+   - 或 `llm-usage-widget_vX.X.X.exe`（单文件版，约 13 MB）：双击即用，便于携带；同样支持右键「检查更新…」
 2. 双击运行。首次运行若弹出 Windows SmartScreen 蓝色提示，点「更多信息」→「仍要运行」
 3. 首次运行会弹出设置窗口，填入密钥即可开始使用
 
@@ -48,10 +48,10 @@ python src/usage_widget.pyw
 ```bash
 pip install pyinstaller==6.22.3 customtkinter==6.0.0
 
-# 非单文件（onedir，推荐）；产物：dist/onedir/llm-usage-widget_vX.X.X/
+# 非单文件（onedir，推荐）；产物：dist/onedir/llm-usage-widget/
 pyinstaller --noconsole --clean --collect-all customtkinter \
   --distpath dist/onedir --workpath build/onedir \
-  --name llm-usage-widget_vX.X.X src/usage_widget.pyw
+  --name llm-usage-widget src/usage_widget.pyw
 
 # 单文件 exe；产物：dist/onefile/llm-usage-widget_vX.X.X.exe
 pyinstaller --onefile --noconsole --clean --collect-all customtkinter \

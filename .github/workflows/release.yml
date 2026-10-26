@@ -55,7 +55,7 @@ jobs:
           pyinstaller --noconsole --clean \
             --collect-all customtkinter \
             --distpath dist/onedir --workpath build/onedir \
-            --name "llm-usage-widget_v${VERSION}" \
+            --name "llm-usage-widget" \
             src/usage_widget.pyw
 
       - name: 打包单文件 EXE

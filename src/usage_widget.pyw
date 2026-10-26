@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-额度悬浮窗 v2.6.3 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+额度悬浮窗 v2.6.4 - 智谱 GLM Coding Plan + 火山引擎 Agent Plan 桌面常驻用量监控
+
+v2.6.4 更新：
+- 内置自动更新：右键菜单新增「检查更新…」，检测 GitHub Releases 新版，
+  下载后自动退出并用独立 PowerShell 脚本完成"替换文件 → 重启"，无需
+  手动下载解压；更新过程会保留同目录的 config.json / history.jsonl / error.log
+- onedir 便携版打包名改为通用名 `llm-usage-widget/llm-usage-widget.exe`，
+  更新后文件夹路径与 exe 名保持不变，开机自启和快捷方式不会失效
+- 新增独立模块 `src/updater.py`，负责版本检查、下载、生成升级脚本
 
 v2.6.3 更新：
 - 发布形态改为「onedir（文件夹）+ 单文件 exe」双版本：onedir 从安装目录
@@ -123,8 +131,13 @@ except Exception:
     ctk = None
     CTK_AVAILABLE = False
 
+try:  # 应用内自动更新（仅 Windows 打包版有效）
+    from updater import Updater
+except Exception:
+    Updater = None
+
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.6.3"
+APP_VERSION = "2.6.4"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -2151,6 +2164,7 @@ class UsageWidget:
         # 菜单单选项（右键菜单贴边开关 / 配色主题）
         self.dock_var = tk.BooleanVar(value=bool(self.cfg.get("edge_dock", True)))
         self.theme_var = tk.StringVar(value=str(self.cfg.get("theme", "auto") or "auto"))
+        self.updater = Updater(self.root, APP_VERSION) if (Updater and TK_AVAILABLE) else None
         self._build_window()
         self._build_menu()
         self._bind_events()
@@ -2226,6 +2240,8 @@ class UsageWidget:
                             font=(self.font_family, 9), bd=1, relief="solid")
         self.menu.add_command(label="立即刷新", command=self.refresh_async)
         self.menu.add_command(label="设置…", command=self.open_settings)
+        if self.updater:
+            self.menu.add_command(label="检查更新…", command=self.updater.check)
         self.menu.add_separator()
         theme_menu = tk.Menu(self.menu, tearoff=0, font=(self.font_family, 9))
         for value, label in (("auto", "自动（跟随背景）"),
