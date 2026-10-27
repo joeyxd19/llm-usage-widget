@@ -5,7 +5,7 @@
 
 #define MyAppName "额度悬浮窗"
 #define MyAppNameEn "LLM Usage Widget"
-#define MyAppVersion "2.8.2"
+#define MyAppVersion "2.8.3"
 #define MyAppPublisher "joeyxd19"
 #define MyAppURL "https://github.com/joeyxd19/llm-usage-widget"
 #define MyAppExeName "llm-usage-widget.exe"
@@ -33,6 +33,10 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; 程序运行检测与结束由下方 [Code] 自行处理（会先询问用户），
+; 关掉 Inno 自带的 Restart Manager 关闭/重启，避免重复提示与装完自动重启
+CloseApplications=no
+RestartApplications=no
 
 [Tasks]
 Name: "autostart"; Description: "开机自动启动"; GroupDescription: "附加任务:"; Flags: unchecked
@@ -50,3 +54,78 @@ Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "立即启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// 安装前检测「额度悬浮窗」是否正在运行：正在运行就询问用户是否结束它。
+// 检测用程序自身的单实例互斥体（与 src/usage_widget.pyw 中的名字保持一致），
+// 比按进程名查更准确，也不会误杀同名的其他程序。
+const
+  AppMutexName = 'UsageWidget_ZV_SingleInstance';
+  AppExeName = '{#MyAppExeName}';
+
+function IsAppRunning(): Boolean;
+begin
+  Result := CheckForMutexes(AppMutexName);
+end;
+
+procedure KillApp(Force: Boolean);
+var
+  Params: String;
+  ResultCode: Integer;
+begin
+  // 先发普通关闭请求（程序会正常退出并保存窗口位置），必要时再加 /F 强杀
+  Params := '/T /IM ' + AppExeName;
+  if Force then
+    Params := '/F ' + Params;
+  Exec(ExpandConstant('{sys}\taskkill.exe'), Params, '', SW_HIDE,
+       ewWaitUntilTerminated, ResultCode);
+end;
+
+function WaitAppExit(MaxMs: Integer): Boolean;
+var
+  Waited: Integer;
+begin
+  Waited := 0;
+  while (Waited < MaxMs) and IsAppRunning() do
+  begin
+    Sleep(200);
+    Waited := Waited + 200;
+  end;
+  Result := not IsAppRunning();
+end;
+
+function InitializeSetup(): Boolean;
+var
+  Reply: Integer;
+begin
+  Result := True;
+  if not IsAppRunning() then
+    Exit;
+
+  if not WizardSilent() then
+  begin
+    Reply := MsgBox('检测到「额度悬浮窗」正在运行。' + #13#10 + #13#10 +
+                    '安装新版本需要先结束正在运行的程序，是否现在自动结束并继续安装？',
+                    mbConfirmation, MB_YESNO);
+    if Reply <> IDYES then
+    begin
+      MsgBox('安装已取消。' + #13#10 + #13#10 +
+             '请右键点击悬浮窗选择「退出」后重新运行安装程序。',
+             mbInformation, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  KillApp(False);
+  if not WaitAppExit(2000) then
+  begin
+    KillApp(True);
+    if not WaitAppExit(3000) then
+    begin
+      MsgBox('未能结束正在运行的「额度悬浮窗」。' + #13#10 + #13#10 +
+             '请右键点击悬浮窗选择「退出」后重新运行安装程序。', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+end;
