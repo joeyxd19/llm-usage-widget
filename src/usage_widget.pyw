@@ -168,7 +168,7 @@ except Exception:
     Updater = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.8.1"
+APP_VERSION = "2.8.2"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -656,18 +656,13 @@ def widget_hwnd(root):
 
 # Windows SetWindowPos 用到的常量
 _HWND_TOPMOST = -1
+_HWND_NOTOPMOST = -2
 _SWP_NOSIZE = 0x0001
 _SWP_NOMOVE = 0x0002
 _SWP_NOACTIVATE = 0x0010
 
 
-def assert_topmost(hwnd):
-    """用 SetWindowPos 把窗口重新钉到最顶层（HWND_TOPMOST），不激活也不改位置尺寸。
-
-    tk 的 -topmost 会被系统在若干时刻悄悄清掉（切换全屏应用、切换虚拟桌面、
-    窗口显隐、设置 -transparentcolor 等），只靠一次 attributes("-topmost", True)
-    并不能"一直"保持置顶，所以需要定时重新断言。SWP_NOACTIVATE 保证重新置顶时
-    不抢走当前焦点窗口的输入。"""
+def _set_topmost(hwnd, insert_after):
     if not hwnd or os.name != "nt":
         return
     try:
@@ -679,11 +674,29 @@ def assert_topmost(hwnd):
             ctypes.c_uint]
         user32.SetWindowPos.restype = ctypes.c_bool
         user32.SetWindowPos(
-            ctypes.c_void_p(hwnd), ctypes.c_void_p(_HWND_TOPMOST),
+            ctypes.c_void_p(hwnd), ctypes.c_void_p(insert_after),
             0, 0, 0, 0,
             _SWP_NOSIZE | _SWP_NOMOVE | _SWP_NOACTIVATE)
     except Exception:
         pass
+
+
+def assert_topmost(hwnd):
+    """用 SetWindowPos 把窗口重新钉到最顶层（HWND_TOPMOST），不激活也不改位置尺寸。
+
+    tk 的 -topmost 会被系统在若干时刻悄悄清掉（切换全屏应用、切换虚拟桌面、
+    窗口显隐、设置 -transparentcolor 等），只靠一次 attributes("-topmost", True)
+    并不能"一直"保持置顶，所以需要定时重新断言。SWP_NOACTIVATE 保证重新置顶时
+    不抢走当前焦点窗口的输入。"""
+    _set_topmost(hwnd, _HWND_TOPMOST)
+
+
+def release_topmost(hwnd):
+    """把窗口从置顶层摘下（HWND_NOTOPMOST）。
+
+    右键菜单是系统原生普通窗口，悬浮窗常驻置顶时会把它压在下面，
+    所以菜单显示期间必须暂时让出置顶，关闭后再 assert_topmost 钉回去。"""
+    _set_topmost(hwnd, _HWND_NOTOPMOST)
 
 
 # 预测适用的窗口（秒）：只对短周期窗口做烧速外推才有指导意义
@@ -2280,6 +2293,8 @@ class UsageWidget:
         # ---- 置顶守护 ----
         self._topmost_job = None
         self._topmost_hwnd = 0
+        self._topmost_paused = False   # 右键菜单显示期间暂停置顶
+        self._menu_watch_job = None
         # ---- 配色主题 ----
         self.theme_eff = "dark"
         self.t = dict(THEMES["dark"])
@@ -2491,19 +2506,81 @@ class UsageWidget:
         self._cancel_collapse_timer()
         # 右键菜单打开期间不要自动收回（指针移到菜单上会触发 Leave）
         self._suppress_collapse = True
+        self._popup_menu(event.x_root, event.y_root)
+
+    def _popup_menu(self, x, y):
+        """弹出右键菜单。
+
+        悬浮窗常驻置顶（HWND_TOPMOST），而系统原生菜单只是普通窗口，会被压在
+        悬浮窗下面，表现为「菜单被挡住」。所以菜单显示期间先让出置顶并暂停置顶
+        守护，菜单关闭后再钉回去。"""
+        self._topmost_paused = True
+        if not self._topmost_hwnd:
+            self._topmost_hwnd = widget_hwnd(self.root)
+        release_topmost(self._topmost_hwnd)
         try:
-            self.menu.tk_popup(event.x_root, event.y_root)
+            self.menu.tk_popup(x, y)
         finally:
-            self.menu.grab_release()
-            self._suppress_collapse = False
-            # 菜单关闭后，若指针已不在窗口上则启动收回计时
-            if self.dock_state == "expanded" and not self._animating:
-                try:
-                    px, py = self.root.winfo_pointerx(), self.root.winfo_pointery()
-                    if not self._pointer_in_window(px, py):
-                        self._collapse_timer = self.root.after(300, self._collapse_to_dock)
-                except Exception:
-                    pass
+            try:
+                self.menu.grab_release()
+            except Exception:
+                pass
+            self._watch_menu_closed()
+
+    def _watch_menu_closed(self):
+        """等原生菜单真正关闭后，恢复置顶与自动收回逻辑。
+
+        Windows 下菜单由系统模态循环托管，tk_popup 可能已经返回而菜单还开着，
+        因此不能靠 tk_popup 返回即刻恢复，改为轮询菜单窗口是否存在。"""
+        if self._menu_watch_job is not None:
+            try:
+                self.root.after_cancel(self._menu_watch_job)
+            except Exception:
+                pass
+            self._menu_watch_job = None
+        if self._native_menu_open():
+            try:
+                self._menu_watch_job = self.root.after(80, self._watch_menu_closed)
+            except Exception:
+                self._menu_watch_job = None
+            return
+        self._topmost_paused = False
+        assert_topmost(self._topmost_hwnd)
+        self._suppress_collapse = False
+        # 菜单关闭后，若指针已不在窗口上则启动收回计时
+        if self.dock_state == "expanded" and not self._animating:
+            try:
+                px, py = self.root.winfo_pointerx(), self.root.winfo_pointery()
+                if not self._pointer_in_window(px, py):
+                    self._collapse_timer = self.root.after(300, self._collapse_to_dock)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _native_menu_open():
+        """当前线程是否还开着原生菜单（Windows 菜单窗口类名为 #32768）。"""
+        if os.name != "nt":
+            return False
+        try:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            buf = ctypes.create_unicode_buffer(64)
+            found = []
+
+            def _cb(hwnd, _lparam):
+                user32.GetClassNameW(hwnd, buf, 64)
+                if buf.value == "#32768":
+                    found.append(hwnd)
+                    return False
+                return True
+
+            proto = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            user32.EnumThreadWindows(kernel32.GetCurrentThreadId(), proto(_cb), 0)
+            return bool(found)
+        except Exception:
+            return False
 
     def _save_window_pos(self):
         save_config_patch({"window_x": self.root.winfo_x(),
@@ -3575,6 +3652,10 @@ class UsageWidget:
 
     def _topmost_tick(self):
         self._topmost_job = None
+        if self._topmost_paused:
+            # 右键菜单显示中：此时把悬浮窗钉回最上层会重新盖住菜单，先让位
+            self._topmost_job = self.root.after(400, self._topmost_tick)
+            return
         if not self._topmost_hwnd:
             self._topmost_hwnd = widget_hwnd(self.root)
         assert_topmost(self._topmost_hwnd)
