@@ -117,18 +117,6 @@ jobs:
             echo "未生成 delta.zip，回退到复制完整 update.zip"
           fi
 
-      - name: 打包单文件 EXE（便携备选）
-        shell: bash
-        env:
-          TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          VERSION="${TAG#v}"
-          pyinstaller --onefile --noconsole --clean \
-            --collect-all customtkinter \
-            --distpath dist/onefile --workpath build/onefile \
-            --name "llm-usage-widget_v${VERSION}" \
-            src/usage_widget.pyw
-
       - name: 打包自动更新补丁包（不再作为便携版分发）
         shell: pwsh
         env:
@@ -165,7 +153,6 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           files: |
-            dist/onefile/*.exe
             dist/installer/*.exe
             dist/llm-usage-widget_v*_update.zip
             dist/llm-usage-widget_v*_delta.zip

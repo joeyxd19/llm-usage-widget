@@ -2,13 +2,11 @@
 
 Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **火山引擎 Agent Plan** 的额度用量。
 
-## 直接下载使用（免安装）
+## 直接下载使用
 
 > 适用于任何 Windows 10/11 电脑，无需安装 Python 或任何依赖。
 
-1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中选择下载：
-   - **推荐** `llm-usage-widget_vX.X.X_setup.exe`（安装包）：双击运行安装向导，**安装位置可自选**（默认 `%LocalAppData%\LLM Usage Widget`，无需管理员权限）；安装完成后开始菜单会出现「额度悬浮窗」，以后可在悬浮窗上**右键 → 检查更新…**一键升级
-   - 或 `llm-usage-widget_vX.X.X.exe`（单文件版，约 13 MB）：双击即用，便于随身携带；同样支持右键「检查更新…」
+1. 打开 [Releases 发布页](https://github.com/joeyxd19/llm-usage-widget/releases)，在最新版本的 Assets 中下载 `llm-usage-widget_vX.X.X_setup.exe`（安装包）：双击运行安装向导，**安装位置可自选**（默认 `%LocalAppData%\LLM Usage Widget`，无需管理员权限）；安装完成后开始菜单会出现「额度悬浮窗」，以后可在悬浮窗上**右键 → 检查更新…**一键升级
 2. 首次运行若弹出 Windows SmartScreen 蓝色提示，点「更多信息」→「仍要运行」
 3. 首次运行会弹出设置窗口，填入密钥即可开始使用
 
@@ -28,7 +26,7 @@ EXE 由 PyInstaller 打包，内嵌完整 Python 运行环境；密钥只保存�
 - **配色主题**：深色 / 浅色 / 自动跟随背景明暗
 - **额度预警**：绿（正常）/ 黄（偏高）/ 红（临界）三档变色，阈值可调
 - **高分屏适配**：DPI 感知渲染 + 界面缩放（75%~130%）+ 透明度可调
-- **轻量常驻**：单文件 Python（悬浮窗本体仅标准库；设置窗口可选启用 customtkinter 获得现代控件，未安装自动回退）；开机自启、单实例保护；亦可打包为免安装 EXE
+- **轻量常驻**：悬浮窗本体仅用标准库；设置窗口用 customtkinter 绘制，未安装时自动回退到经典 Tk 版；开机自启、单实例保护、应用内增量更新
 
 ## 快速开始
 
@@ -59,11 +57,6 @@ pyinstaller --noconsole --clean --collect-all customtkinter \
 
 # 2. 编译安装包 Setup.exe（需 Inno Setup 6）
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=X.X.X scripts/setup.iss
-
-# 3. 单文件 exe（便携备选）；产物：dist/onefile/llm-usage-widget_vX.X.X.exe
-pyinstaller --onefile --noconsole --clean --collect-all customtkinter \
-  --distpath dist/onefile --workpath build/onefile \
-  --name llm-usage-widget_vX.X.X src/usage_widget.pyw
 ```
 
 首次运行会弹出设置窗口，填入密钥即可：
@@ -91,7 +84,6 @@ llm-usage-widget/
 │   └── setup.iss            # Inno Setup 安装包脚本
 └── dist/                   # 本地打包产物（不入库，发布版见 Releases）
     ├── onedir/              # onedir 内容源，用于生成安装包/更新包
-    ├── onefile/             # 单文件 exe
     └── installer/           # Setup.exe
 ```
 
