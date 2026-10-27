@@ -5,7 +5,7 @@
 
 #define MyAppName "额度悬浮窗"
 #define MyAppNameEn "LLM Usage Widget"
-#define MyAppVersion "2.8.3"
+#define MyAppVersion "2.8.4"
 #define MyAppPublisher "joeyxd19"
 #define MyAppURL "https://github.com/joeyxd19/llm-usage-widget"
 #define MyAppExeName "llm-usage-widget.exe"
@@ -33,10 +33,6 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayIcon={app}\{#MyAppExeName}
-; 程序运行检测与结束由下方 [Code] 自行处理（会先询问用户），
-; 关掉 Inno 自带的 Restart Manager 关闭/重启，避免重复提示与装完自动重启
-CloseApplications=no
-RestartApplications=no
 
 [Tasks]
 Name: "autostart"; Description: "开机自动启动"; GroupDescription: "附加任务:"; Flags: unchecked
