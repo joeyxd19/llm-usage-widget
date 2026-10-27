@@ -168,7 +168,7 @@ except Exception:
     Updater = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.8.0"
+APP_VERSION = "2.8.1"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -2381,7 +2381,7 @@ class UsageWidget:
         self.menu.add_command(label="立即刷新", command=self.refresh_async)
         self.menu.add_command(label="设置…", command=self.open_settings)
         if self.updater:
-            self.menu.add_command(label="检查更新…", command=self.updater.check)
+            self.menu.add_command(label="检查更新…", command=self._manual_update_check)
         self.menu.add_separator()
         theme_menu = tk.Menu(self.menu, tearoff=0, font=(self.font_family, 9))
         for value, label in (("auto", "自动（跟随背景）"),
@@ -3767,6 +3767,20 @@ class UsageWidget:
         except Exception:
             self.status_text = msg  # 兜底：气泡异常时至少记录状态
 
+    def _manual_update_check(self):
+        """右键菜单「检查更新」：先给即时反馈，不允许点了毫无动静。"""
+        if not self.updater:
+            self._toast("当前运行方式不支持自动更新")
+            return
+        if self.updater.busy:
+            self._toast("正在检查更新，请稍候…")
+            return
+        if not self.updater.pkg:
+            self._toast("当前运行方式不支持自动更新")
+            return
+        self._toast("正在检查更新…")
+        self.updater.check()
+
     def _silent_update_check(self):
         """后台静默检查更新。仅在打包版且未处于初始设置状态时执行。"""
         try:
@@ -3829,6 +3843,12 @@ class UsageWidget:
                 tw.destroy()
                 dismiss()
 
+            def _auto_close():
+                # 超时自动消失同样要复位 _busy，否则后续检查会被静默拦掉
+                if tw.winfo_exists():
+                    tw.destroy()
+                dismiss()
+
             tk.Label(btn_frame, text="", bg=bg).pack(side="left", expand=True)
             tk.Button(
                 btn_frame,
@@ -3876,10 +3896,20 @@ class UsageWidget:
 
             _fade_in()
 
-            # 15 秒后自动消失
-            tw.after(15_000, lambda: tw.destroy() if tw.winfo_exists() else None)
+            # 15 秒后自动消失（同时复位更新器状态）
+            tw.after(15_000, _auto_close)
         except Exception:
-            pass
+            # 气泡兜底：至少用原生对话框把更新信息给出去，不能静默失败
+            try:
+                if messagebox is not None and messagebox.askyesno(
+                    "发现新版本",
+                    f"发现新版本 {info.get('tag')}，是否现在下载并安装？",
+                ):
+                    info["download"]()
+                else:
+                    info["dismiss"]()
+            except Exception:
+                pass
 
 
 # --------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 import urllib.request
@@ -78,6 +79,7 @@ class Updater:
         self.on_prompt = on_prompt   # 静默检查时发现新版的回调(tag, body, url, size)
         self.pkg = package_type()
         self._busy = False
+        self._busy_since = 0.0
         self._window = None
         self._progress = None
         self._label = None
@@ -85,15 +87,33 @@ class Updater:
 
     # ---------------- UI 入口 ----------------
 
+    @property
+    def busy(self):
+        """是否正在检查/下载中。检查阶段的挂起状态超时视为已失效。"""
+        if not self._busy:
+            return False
+        try:
+            if self._window is not None and self._window.winfo_exists():
+                return True   # 正在下载，耗时久也不能放行第二次检查
+        except Exception:
+            pass
+        if time.time() - self._busy_since > 120:
+            self._busy = False
+            return False
+        return True
+
     def check(self, silent=False):
         """启动检查更新线程。"""
         if not self.pkg:
             if not silent:
                 messagebox.showinfo("检查更新", "源码运行模式不支持自动更新。")
             return
-        if self._busy:
+        if self.busy:
+            if not silent:
+                messagebox.showinfo("检查更新", "正在检查更新，请稍候…")
             return
         self._busy = True
+        self._busy_since = time.time()
         self._cancelled = False
         threading.Thread(
             target=self._check_worker, args=(silent,), daemon=True
@@ -103,8 +123,11 @@ class Updater:
         try:
             tag, body, assets = self._fetch_latest()
         except Exception as exc:
+            # 注意：不能在 after 回调里引用 except 变量，Python 3 离开
+            # except 块后会删除它，回调执行时只会抛 NameError。
+            err = str(exc)
             self._ui_after(
-                0, lambda: self._on_error("检查更新失败", str(exc), silent)
+                0, lambda: self._on_error("检查更新失败", err, silent)
             )
             return
 
@@ -229,8 +252,13 @@ class Updater:
                 self._download_and_apply(tag, url, manifest)
             else:
                 self._busy = False
-        except Exception:
+        except Exception as exc:
+            # 提示构建失败时也要把错误抛到界面上，不能静默复位了事
             self._busy = False
+            err = str(exc)
+            self._ui_after(
+                0, lambda: messagebox.showerror("检查更新失败", err)
+            )
 
     def _download_and_apply(self, version, url, manifest=None):
         self._show_progress(f"正在下载 v{version} …")
@@ -378,8 +406,9 @@ class Updater:
                             )
             self._ui_after(0, lambda: self._on_downloaded(version, dest, manifest))
         except Exception as exc:
+            err = str(exc)
             self._ui_after(
-                0, lambda: self._on_error("下载失败", str(exc), False)
+                0, lambda: self._on_error("下载失败", err, False)
             )
 
     def _on_downloaded(self, version, dest, manifest=None):
