@@ -5,7 +5,7 @@
 
 #define MyAppName "额度悬浮窗"
 #define MyAppNameEn "LLM Usage Widget"
-#define MyAppVersion "2.8.4"
+#define MyAppVersion "2.8.5"
 #define MyAppPublisher "joeyxd19"
 #define MyAppURL "https://github.com/joeyxd19/llm-usage-widget"
 #define MyAppExeName "llm-usage-widget.exe"

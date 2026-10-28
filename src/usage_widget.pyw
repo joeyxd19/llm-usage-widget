@@ -83,9 +83,10 @@ v2.5.0 更新：
 - 系统通知预警：用量跨过黄/红阈值、按烧速预测撑不到重置、5 小时窗口
   临近重置（≤20 分钟且用量偏高）时弹 Windows 通知，每窗口期只提醒一次；
   设置里可整体开关
-- 烧速预测：本地记录每次刷新的用量快照（history.jsonl，保留 14 天），
-  对 5 小时/本周窗口做最小二乘斜率外推，面板上显示"烧速 X%/时 ·
-  预计 Y 后用尽/到重置约 Z%"，撑不到重置时标红
+- 烧速预测（v2.8.5 起默认关闭，设置「提醒与行为」里可打开）：本地记录每次
+  刷新的用量快照（history.jsonl，保留 14 天），对 5 小时/本周窗口做最小二乘
+  斜率外推，面板上显示"烧速 X%/时 · 预计 Y 后用尽/到重置约 Z%"，撑不到
+  重置时标红
 - 数据不足（<4 个点或跨度 <20 分钟）或烧速接近零时不显示预测，保持安静
 
 v2.3.2 更新：
@@ -168,7 +169,7 @@ except Exception:
     Updater = None
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "2.8.4"
+APP_VERSION = "2.8.5"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -197,7 +198,8 @@ DEFAULT_CONFIG = {
     "ui_scale": 1.0,
     "warn_percent": 80,
     "critical_percent": 95,
-    "notify": True,             # 系统通知预警（阈值跨越/烧速预测/临近重置）
+    "notify": True,             # 系统通知预警（阈值跨越/临近重置）
+    "burn_predict": False,      # 烧速预测（按历史用量外推何时用尽），默认关闭
     "window_x": 120,
     "window_y": 120,
     "theme": "auto",           # auto 自动跟随背景 | dark 深色 | light 浅色
@@ -300,8 +302,8 @@ def load_config():
         if isinstance(user.get(section), dict):
             cfg[section].update(user[section])
     for key in ("refresh_minutes", "opacity", "ui_scale", "warn_percent",
-                "critical_percent", "notify", "window_x", "window_y",
-                "theme", "edge_dock", "dock_side", "dock_len"):
+                "critical_percent", "notify", "burn_predict", "window_x",
+                "window_y", "theme", "edge_dock", "dock_side", "dock_len"):
         if key in user:
             cfg[key] = user[key]
     return cfg
@@ -1238,6 +1240,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         self.warn = tk.IntVar(value=int(cfg.get("warn_percent", 80)))
         self.crit = tk.IntVar(value=int(cfg.get("critical_percent", 95)))
         self.notify_en = tk.BooleanVar(value=bool(cfg.get("notify", True)))
+        self.burn_en = tk.BooleanVar(value=bool(cfg.get("burn_predict", False)))
 
         self._segmented_list = []
 
@@ -1608,8 +1611,11 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         self._stepper(right, self.warn, 10, 98, 1, "%")
         right = self._prow(panel, "红色临界阈值")
         self._stepper(right, self.crit, 11, 99, 1, "%")
-        right = self._prow(panel, "系统通知", "跨阈值 / 烧速 / 临近重置时提醒")
+        right = self._prow(panel, "系统通知", "跨阈值 / 临近重置时提醒")
         self._switch(right, self.notify_en).pack(side="left")
+        right = self._prow(panel, "烧速预测",
+                           "按近期用量外推何时用尽；默认关闭，记录本地历史")
+        self._switch(right, self.burn_en).pack(side="left")
         self._pautostart(panel)
         ctk.CTkFrame(col, height=14, fg_color="transparent").pack(fill="x")
 
@@ -1649,6 +1655,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
             "warn_percent": warn,
             "critical_percent": crit,
             "notify": bool(self.notify_en.get()),
+            "burn_predict": bool(self.burn_en.get()),
         }
         self._close()
         self.on_apply(patch)
@@ -1723,6 +1730,7 @@ class SettingsDialog(tk.Toplevel):
         self.warn = tk.IntVar(value=int(cfg.get("warn_percent", 80)))
         self.crit = tk.IntVar(value=int(cfg.get("critical_percent", 95)))
         self.notify_en = tk.BooleanVar(value=bool(cfg.get("notify", True)))
+        self.burn_en = tk.BooleanVar(value=bool(cfg.get("burn_predict", False)))
 
         # ---- 布局：底部按钮固定 + 左侧导航 + 右侧可滚动内容 ----
         self._pages = {}
@@ -2196,9 +2204,12 @@ class SettingsDialog(tk.Toplevel):
         right = self._setting_row(card, "红色临界阈值", None)
         self._row_stepper(right, self.crit, 11, 99, 1, "%")
         right = self._setting_row(card, "系统通知",
-                                  "跨阈值 / 烧速预测 / 临近重置时弹 Windows 通知",
-                                  bottom=14)
+                                  "跨阈值 / 临近重置时弹 Windows 通知")
         self._switch(right, self.notify_en)
+        right = self._setting_row(card, "烧速预测",
+                                  "按近期用量外推何时用尽；默认关闭，记录本地历史",
+                                  bottom=14)
+        self._switch(right, self.burn_en)
 
         card = self._card(page, "开机自启",
                           desc="登录 Windows 后自动启动悬浮窗")
@@ -2253,6 +2264,7 @@ class SettingsDialog(tk.Toplevel):
             "warn_percent": warn,
             "critical_percent": crit,
             "notify": bool(self.notify_en.get()),
+            "burn_predict": bool(self.burn_en.get()),
         }
         self._close()
         self.on_apply(patch)
@@ -3170,7 +3182,10 @@ class UsageWidget:
         return out
 
     def _record_history(self):
-        """把本次各窗口百分比写入本地历史，并刷新内存快照。"""
+        """把本次各窗口百分比写入本地历史，并刷新内存快照。
+        烧速预测关闭时不记录，避免无意义的落盘。"""
+        if not self.cfg.get("burn_predict", False):
+            return
         rec = {"ts": time.time()}
         for prov, nm, pct, _rst in self._usage_snapshot():
             key = HIST_KEY_MAP.get((prov, nm))
@@ -3245,7 +3260,9 @@ class UsageWidget:
 
     def _predict_text(self, prov, nm, pct, reset_ts):
         """详情面板预测行文案 (文本, 颜色键)；无预警价值时返回 None，
-        避免面板常驻噪音。"""
+        避免面板常驻噪音。烧速预测默认关闭。"""
+        if not self.cfg.get("burn_predict", False):
+            return None
         calc = self._predict_calc(prov, nm, pct, reset_ts)
         if not calc:
             return None
@@ -3293,7 +3310,8 @@ class UsageWidget:
             elif st["level"] < 2 and pct >= crit_at:
                 st["level"] = 2
                 self._notify(label, "已用 %d%%，即将耗尽" % round(pct), warn=True)
-            if nm in PREDICT_WINDOWS and not st["pred"]:
+            if (self.cfg.get("burn_predict", False)
+                    and nm in PREDICT_WINDOWS and not st["pred"]):
                 calc = self._predict_calc(prov, nm, pct, rst)
                 if (calc and calc["reset_min"] is not None
                         and calc["exhaust_min"] < calc["reset_min"]):
