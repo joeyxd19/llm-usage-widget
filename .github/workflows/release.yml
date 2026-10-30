@@ -55,7 +55,7 @@ jobs:
           python-version: "3.12"
 
       - name: 安装依赖
-        run: pip install pyinstaller==6.22.3 customtkinter==6.0.0
+        run: pip install pyinstaller==6.22.3 PySide6==6.12.0
 
       - name: 安装 Inno Setup
         run: choco install innosetup -y
@@ -67,10 +67,10 @@ jobs:
         run: |
           VERSION="${TAG#v}"
           pyinstaller --noconsole --clean \
-            --collect-all customtkinter \
+            --collect-all PySide6 \
             --distpath dist/onedir --workpath build/onedir \
             --name "llm-usage-widget" \
-            src/usage_widget.pyw
+            src/qt/app.py
 
       - name: 生成当前版本 manifest
         shell: bash
