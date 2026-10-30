@@ -330,6 +330,22 @@ def is_placeholder(value):
     return (not value) or ("这里填" in str(value)) or str(value).strip() == ""
 
 
+def _to_int(value, default, lo=None, hi=None):
+    """宽松地把配置值取整，失败或越界时收敛到默认值。
+
+    config.json 支持手动编辑，脏值（如 "abc"）不能让它炸掉刷新链等
+    关键路径；lo/hi 给定时把结果夹在该区间内。"""
+    try:
+        v = int(float(value))
+    except (TypeError, ValueError):
+        return default
+    if lo is not None:
+        v = max(lo, v)
+    if hi is not None:
+        v = min(hi, v)
+    return v
+
+
 # --------------------------------------------------------------------------
 # 本地用量历史（烧速预测与趋势的数据基础）
 # --------------------------------------------------------------------------
@@ -554,7 +570,7 @@ NIF_ICON, NIF_TIP, NIF_INFO = 0x02, 0x04, 0x10
 NIIF_INFO, NIIF_WARNING = 0x01, 0x02
 
 _NOTIFY_TRAY_UIN = 0x7583
-_NOTIFY_ICON_ON = {"hwnd": 0}   # 当前已注册托盘图标的窗口句柄
+_NOTIFY_ICON_ON = {"hwnd": 0, "timer": None}   # 当前托盘图标句柄与待触发的删除定时器
 
 
 def _build_notify_struct(hwnd, title, text, warn):
@@ -621,9 +637,14 @@ def windows_notify(hwnd, title, text, warn=False):
                 _NOTIFY_ICON_ON["hwnd"] = hwnd
         if not shown:
             return False
-        # 多次通知共用同一图标；定时器逐一触发删除时只有首个真正生效
+        # 多次通知共用同一图标：先取消上一个待触发的删除定时器再重新计时，
+        # 否则旧定时器会在新气泡展示期间删掉托盘图标，气泡被提前带没
+        old = _NOTIFY_ICON_ON.get("timer")
+        if old is not None:
+            old.cancel()
         t = threading.Timer(30.0, _tray_icon_remove, args=(hwnd,))
         t.daemon = True
+        _NOTIFY_ICON_ON["timer"] = t
         t.start()
         return True
     except Exception:
@@ -1075,15 +1096,10 @@ THEMES = {
         "tag_z": "#e8eeff", "tag_v": "#ffe9ee",
     },
 }
-THEME_LABELS = {"auto": "自动（跟随背景）", "dark": "深色", "light": "浅色"}
 
 FONT_FAMILY_CANDIDATES = ["Microsoft YaHei UI", "Microsoft YaHei",
                           "PingFang SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei"]
 
-
-# --------------------------------------------------------------------------
-# 设置窗口
-# --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
 # 设置窗口
@@ -1661,7 +1677,7 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         self.on_apply(patch)
 
 
-class SettingsDialog(tk.Toplevel):
+class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
     """设置窗口：跟随应用主题的卡片式布局，窗口可自由调整大小（内容滚动）。
     视觉语言对齐 Win11 设置 / CustomTkinter：左说明右控件、开关（Switch）、
     分段选择器、步进器、圆角主按钮、深色沉浸标题栏；
@@ -2288,7 +2304,10 @@ class UsageWidget:
         self._drag_offset = None
         self._moved = False
         # ---- 历史与通知 ----
-        self._hist = load_history(8 * 86400)   # 近 8 天快照（周窗口预测够用）
+        # 近 8 天快照（周窗口预测够用）；烧速预测关闭时不读盘，开启后
+        # 首次记录/应用设置时会补加载
+        self._hist = (load_history(8 * 86400)
+                      if self.cfg.get("burn_predict", False) else [])
         self._notify_state = {}                # "prov:窗口" → 预警去重状态
         self._hwnd_cache = 0
 
@@ -2348,7 +2367,10 @@ class UsageWidget:
     # ---------------- 尺寸与字体 ----------------
 
     def _metrics(self):
-        us = float(self.cfg.get("ui_scale", 1.0))
+        try:
+            us = float(self.cfg.get("ui_scale", 1.0))
+        except (TypeError, ValueError):
+            us = 1.0
         us = min(1.3, max(0.75, us))
         self.uscale = us
         self.k = us * self.dpi / 96.0          # 总像素缩放因子
@@ -2996,6 +3018,8 @@ class UsageWidget:
     def apply_settings(self, patch):
         save_config_patch(patch)             # 增量写盘
         _deep_merge(self.cfg, patch)         # 同步内存
+        if self.cfg.get("burn_predict", False) and not self._hist:
+            self._hist = load_history(8 * 86400)   # 刚打开烧速预测：补读历史
         self._restore_alpha()
         self._metrics()
         self._pick_font()
@@ -3151,7 +3175,8 @@ class UsageWidget:
                 self.status_text = "更新失败：%s" % err[:22]
             self.redraw()
         finally:
-            minutes = max(1, int(self.cfg.get("refresh_minutes", 5)))
+            # 手改 config.json 的脏值也不能断掉自动刷新链，故兜底解析
+            minutes = _to_int(self.cfg.get("refresh_minutes", 5), 5, lo=1, hi=1440)
             self.root.after(minutes * 60 * 1000, self.refresh_async)
 
     # ---------------- 历史记录 / 烧速预测 / 通知 ----------------
@@ -3162,6 +3187,20 @@ class UsageWidget:
             return float(v)
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _safe_ratio_pct(used, quota):
+        """used/quota → 百分比；任一为非数值或 quota 非正时返回 None。
+
+        接口字段没有类型保证，火山 windows 的 used/quota 若是字符串，
+        直接相除会在绘制路径上抛 TypeError（canvas 已清空 → 白窗）。"""
+        try:
+            used, quota = float(used), float(quota)
+        except (TypeError, ValueError):
+            return None
+        if quota <= 0:
+            return None
+        return round(used * 100.0 / quota, 1)
 
     def _usage_snapshot(self):
         """当前各窗口快照 [(供应商, 窗口名, 百分比, 重置时间戳), ...]。"""
@@ -3177,8 +3216,7 @@ class UsageWidget:
         vd = self.data.get("volcano")
         if vd and vd.get("ok"):
             for nm, used, quota, rst in (vd.get("windows") or [])[:3]:
-                pct = round(used * 100.0 / quota, 1) if quota else None
-                out.append(("volcano", nm, self._safe_pct(pct), rst))
+                out.append(("volcano", nm, self._safe_ratio_pct(used, quota), rst))
         return out
 
     def _record_history(self):
@@ -3400,7 +3438,7 @@ class UsageWidget:
             if vd and vd.get("ok"):
                 wins = (vd.get("windows") or [])[:2]
                 groups.append(("火山", C_ACCENT_V, [
-                    (nm, round(u * 100.0 / q, 1) if q else None)
+                    (nm, self._safe_ratio_pct(u, q))
                     for nm, u, q, _ in wins]))
             else:
                 groups.append(("火山", C_ACCENT_V, []))
@@ -3440,12 +3478,12 @@ class UsageWidget:
                     wins = [("5小时", zd.get("five_hour"), None),
                             ("本周", zd.get("weekly"), None)]
                 for nm, pct, rst in wins[:2]:
+                    pct = self._safe_pct(pct)   # 接口字段无类型保证
                     blk = {"t": "win",
                            "label": "5 小时窗口" if nm == "5小时" else "本周额度",
                            "pct": pct, "reset": rst, "used": "",
                            "h": win_h}
-                    pred = self._predict_text("zhipu", nm,
-                                              self._safe_pct(pct), rst)
+                    pred = self._predict_text("zhipu", nm, pct, rst)
                     if pred:
                         blk["pred"], blk["pred_c"] = pred
                         blk["h"] += line_h
@@ -3454,7 +3492,8 @@ class UsageWidget:
                 if mcp:
                     blocks.append({
                         "t": "win", "label": "MCP 每月额度",
-                        "pct": mcp.get("percent"), "reset": mcp.get("reset_ms"),
+                        "pct": self._safe_pct(mcp.get("percent")),
+                        "reset": mcp.get("reset_ms"),
                         "used": "已用 %s / %s" % (
                             self._fmt_num(mcp.get("used", 0)),
                             self._fmt_num(mcp.get("total", 0))),
@@ -3480,7 +3519,7 @@ class UsageWidget:
             prov("火山 Agent Plan", C_ACCENT_V, vd.get("level"))
             if vd.get("ok"):
                 for nm, used, quota, reset in (vd.get("windows") or [])[:3]:
-                    pct = round(used * 100.0 / quota, 1) if quota else None
+                    pct = self._safe_ratio_pct(used, quota)
                     blk = {"t": "win", "label": str(nm) + "额度",
                            "pct": pct, "reset": reset,
                            "used": "已用 %s / %s" % (
@@ -3943,9 +3982,12 @@ class UsageWidget:
                 dismiss()
 
             def _auto_close():
-                # 超时自动消失同样要复位 _busy，否则后续检查会被静默拦掉
-                if tw.winfo_exists():
-                    tw.destroy()
+                # 只有气泡还开着（确实超时无操作）才复位 _busy；用户已点
+                # 「立即更新/忽略」时气泡销毁并不取消已排队的 after 回调，
+                # 此时不能再把下载中的 _busy 复位掉
+                if not tw.winfo_exists():
+                    return
+                tw.destroy()
                 dismiss()
 
             tk.Label(btn_frame, text="", bg=bg).pack(side="left", expand=True)

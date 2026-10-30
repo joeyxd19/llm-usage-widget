@@ -208,7 +208,14 @@ class Updater:
 
         url = chosen["browser_download_url"]
         size = chosen.get("size", 0)
-        delta_info = self._compute_delta(manifest) if can_delta else None
+        # 本地文件可能被占用/无权限导致哈希失败；算不出增量信息就按完整包提示，
+        # 异常绝不能逃出 worker 线程，否则 _busy 卡死、后续检查全部被拦
+        delta_info = None
+        if can_delta:
+            try:
+                delta_info = self._compute_delta(manifest)
+            except Exception:
+                delta_info = None
         self._ui_after(
             0, lambda: self._ask_update(tag, body, url, size, manifest, delta_info)
         )
@@ -440,7 +447,8 @@ class Updater:
         manifest_path = None
         if manifest:
             manifest_path = os.path.join(
-                tempfile.gettempdir(), "llm-usage-widget-update-manifest.json"
+                tempfile.gettempdir(),
+                "llm-usage-widget-update-manifest-%d.json" % pid,
             )
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, ensure_ascii=False)
@@ -450,10 +458,14 @@ class Updater:
         else:
             ps = self._build_ps_onefile(pid, exe, dest)
 
+        # 文件名带上 PID：避免同机多份残留脚本互相覆盖；脚本自身会自删
         ps_path = os.path.join(
-            tempfile.gettempdir(), "llm-usage-widget-updater.ps1"
+            tempfile.gettempdir(), "llm-usage-widget-updater-%d.ps1" % pid
         )
-        with open(ps_path, "w", encoding="utf-8") as f:
+        # 必须带 BOM（utf-8-sig）：Windows PowerShell 5.1 对无 BOM 脚本按
+        # 系统 ANSI 代码页（中文系统为 GBK）解码，脚本里嵌入的中文注释与
+        # 含中文的安装目录/临时目录路径会全部乱码，导致更新悄悄失败
+        with open(ps_path, "w", encoding="utf-8-sig") as f:
             f.write(ps)
 
         cmd = [
