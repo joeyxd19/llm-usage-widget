@@ -1105,24 +1105,61 @@ FONT_FAMILY_CANDIDATES = ["Microsoft YaHei UI", "Microsoft YaHei",
 # 设置窗口
 # --------------------------------------------------------------------------
 
+# 设置窗口的五个功能页（顺序即导航顺序）：
+# key -> (标题/导航文字, 副标题, 主题色点)
+SET_PAGES = [
+    ("providers",  "供应商与账号",
+     "填写智谱 / 火山引擎的访问密钥，不用的供应商直接关闭", C_ACCENT_Z),
+    ("refresh",    "刷新与预测",
+     "数据拉取节奏、烧速预测与网络请求", "#45c1a5"),
+    ("appearance", "外观与主题",
+     "主题、缩放、透明度与贴边收起", "#a88fff"),
+    ("notify",     "通知与预警",
+     "阈值预警与系统通知", "#f0b34e"),
+    ("advanced",   "高级",
+     "开机自启、检查更新与数据文件", "#9aa3ad"),
+]
+
+# 经典 Tk 回退版皮肤（S_* 前缀）。石墨蓝基调：深浅两套完整适配，
+# 强调色与悬浮窗的智谱蓝（C_ACCENT_Z）同族，观感统一。
 SETTINGS_SKINS = {
     "dark": {
-        "S_BG": "#141518", "S_SIDE": "#18191d", "S_SIDE_HI": "#25262c",
-        "S_CARD": "#1e1f24", "S_CARD_HI": "#23252b", "S_LINE": "#2b2d33",
-        "S_TEXT": "#eef0f4", "S_DIM": "#8b919c", "S_HINT": "#6b717c",
-        "S_INPUT": "#16171b", "S_INPUT_LINE": "#35373f",
-        "S_ACCENT": "#8a9dff", "S_ACCENT_HI": "#a2b2ff",
-        "S_ACCENT_SOFT": "#3a4270", "S_BTN_TEXT": "#0e1020",
-        "S_KNOB": "#ffffff", "S_SHADOW": "#000000",
+        "S_BG": "#0f1115", "S_NAV": "#12151a", "S_NAV_HI": "#1a1e26",
+        "S_NAV_ACT": "#25314e", "S_CARD": "#171a20", "S_CARD_LINE": "#242833",
+        "S_LINE": "#22262e", "S_TEXT": "#eceff4", "S_DIM": "#9aa3b2",
+        "S_HINT": "#6b7382", "S_INPUT": "#10131a", "S_INPUT_LINE": "#2a2f3a",
+        "S_ACCENT": "#6d8dff", "S_ACCENT_HI": "#86a1ff",
+        "S_ON_ACCENT": "#0b1226", "S_KNOB": "#f2f4f8", "S_SHADOW": "#000000",
+        "S_THUMB": "#2c313c",
     },
     "light": {
-        "S_BG": "#f2f3f6", "S_SIDE": "#e9ebef", "S_SIDE_HI": "#dde0e6",
-        "S_CARD": "#ffffff", "S_CARD_HI": "#fafbfc", "S_LINE": "#e2e5ea",
-        "S_TEXT": "#1a1c21", "S_DIM": "#5a616c", "S_HINT": "#7d848f",
-        "S_INPUT": "#f7f8fa", "S_INPUT_LINE": "#d0d4da",
-        "S_ACCENT": "#4c63d8", "S_ACCENT_HI": "#3d54c9",
-        "S_ACCENT_SOFT": "#e8ecfb", "S_BTN_TEXT": "#ffffff",
-        "S_KNOB": "#ffffff", "S_SHADOW": "#000000",
+        "S_BG": "#f4f5f8", "S_NAV": "#eceef2", "S_NAV_HI": "#e0e3ea",
+        "S_NAV_ACT": "#dfe6fb", "S_CARD": "#ffffff", "S_CARD_LINE": "#e3e6ec",
+        "S_LINE": "#e7e9ee", "S_TEXT": "#1b1e24", "S_DIM": "#555d6b",
+        "S_HINT": "#7d8492", "S_INPUT": "#f9fafc", "S_INPUT_LINE": "#d5d9e0",
+        "S_ACCENT": "#4059d8", "S_ACCENT_HI": "#3549c0",
+        "S_ON_ACCENT": "#ffffff", "S_KNOB": "#ffffff", "S_SHADOW": "#000000",
+        "S_THUMB": "#c9cdd6",
+    },
+}
+
+# CustomTkinter 主力版皮肤（与经典版同一套色值，键名不带前缀）
+CTK_SKINS = {
+    "dark": {
+        "BG": "#0f1115", "NAV": "#12151a", "NAV_HI": "#1a1e26",
+        "NAV_ACT": "#25314e", "CARD": "#171a20", "CARD_LINE": "#242833",
+        "LINE": "#22262e", "TEXT": "#eceff4", "DIM": "#9aa3b2",
+        "HINT": "#6b7382", "INPUT": "#10131a", "INPUT_LINE": "#2a2f3a",
+        "ACCENT": "#6d8dff", "ACCENT_HI": "#86a1ff",
+        "ON_ACCENT": "#0b1226", "KNOB": "#f2f4f8", "THUMB": "#2c313c",
+    },
+    "light": {
+        "BG": "#f4f5f8", "NAV": "#eceef2", "NAV_HI": "#e0e3ea",
+        "NAV_ACT": "#dfe6fb", "CARD": "#ffffff", "CARD_LINE": "#e3e6ec",
+        "LINE": "#e7e9ee", "TEXT": "#1b1e24", "DIM": "#555d6b",
+        "HINT": "#7d8492", "INPUT": "#f9fafc", "INPUT_LINE": "#d5d9e0",
+        "ACCENT": "#4059d8", "ACCENT_HI": "#3549c0",
+        "ON_ACCENT": "#ffffff", "KNOB": "#ffffff", "THUMB": "#c9cdd6",
     },
 }
 
@@ -1143,39 +1180,22 @@ def apply_immersive_titlebar(hwnd, dark=True):
         pass
 
 
-CTK_SKINS = {
-    # 设置窗皮肤：暖灰墨色 + 朱砂强调色。直角、发丝线、单页双栏，
-    # 用版式（编号 + 分隔线）分块，而不是一层层圆角卡片堆叠。
-    "dark": {
-        "BG": "#0b0c0e", "PANEL": "#131417", "PANEL_HI": "#1b1d21",
-        "LINE": "#26272b",
-        "TEXT": "#f4f2ee", "DIM": "#b0ada6", "HINT": "#7f7c75",
-        "INPUT": "#0e0f12", "INPUT_LINE": "#2c2d32",
-        "ACCENT": "#ff6a3d", "ACCENT_HI": "#ff8158", "ACCENT_TEXT": "#180703",
-        "SWITCH_KNOB": "#f7f5f1",
-    },
-    "light": {
-        "BG": "#f7f6f2", "PANEL": "#ffffff", "PANEL_HI": "#efede8",
-        "LINE": "#e1ddd5",
-        "TEXT": "#17150f", "DIM": "#4e4a42", "HINT": "#827d73",
-        "INPUT": "#fbfaf7", "INPUT_LINE": "#d6d1c8",
-        "ACCENT": "#e2512b", "ACCENT_HI": "#c94320", "ACCENT_TEXT": "#ffffff",
-        "SWITCH_KNOB": "#2f2a24",
-    },
-}
-
-THEME_LABELS = {"auto": "自动", "dark": "深色", "light": "浅色"}
-
 # ctk 缺失时基类退化为 object：此类定义仍可安全加载，
 # 且 open_settings 已分流，绝不会在无 ctk 时实例化它
 _CTK_TOPLEVEL_BASE = ctk.CTkToplevel if CTK_AVAILABLE else object
 
 
 class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
-    """CustomTkinter 版设置窗口：真圆角抗锯齿控件，接近 Win11 原生观感。
-    未安装 customtkinter 时由调用方回退到经典 Tk 版 SettingsDialog。"""
+    """CustomTkinter 版设置窗口（主力实现）。
 
-    def __init__(self, master, cfg, on_apply, on_autostart, skin="dark"):
+    布局：左侧固定导航（五个功能页）+ 右侧卡片式内容 + 底部操作栏。
+    内容区用原生 tk.Canvas 滚动、右缘悬浮指示条，不碰 CTkScrollableFrame
+    的私有属性；分段选择器用一组 CTkButton 自拼，不碰
+    CTkSegmentedButton 的私有属性。未安装 customtkinter 时由调用方
+    回退到经典 Tk 版 SettingsDialog，两版保持同一布局逻辑。"""
+
+    def __init__(self, master, cfg, on_apply, on_autostart, skin="dark",
+                 on_update=None, on_close=None):
         # 注意：外观模式必须在 super().__init__() 之前设置。
         # CTkToplevel 初始化时会 withdraw 窗口改标题栏颜色；若初始化后再切换
         # 外观模式会触发二次 withdraw 回调，窗口可能卡在隐藏状态（200x200）。
@@ -1194,11 +1214,14 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
         except Exception:
             pass
         self.on_apply = on_apply
-        self.on_autostart = on_autostart  # (enable_cb, disable_cb)
+        self.on_autostart = on_autostart    # (enable_cb, disable_cb)
+        self.on_update = on_update          # 「检查更新」回调（可选）
+        self.on_close = on_close            # 窗口关闭回调（可选，用于清理引用）
 
         # ---- 字体：中文雅黑（完整字形、ClearType 锐利），数字/英文用
-        # Win11 系统的 Segoe UI Variable（更精致）；雅黑在大字号下偏圆粗，
-        # 阶梯整体收细一档，正文 12 逻辑像素，观感向 Win11 原生靠拢 ----
+        # Win11 系统的 Segoe UI Variable（更精致）。CTkFont 字号是绝对像素
+        # （不随 DPI 缩放），而控件高度会被 CTk 内部按窗口缩放放大——手动
+        # 给字号乘同一系数，保持文字与控件同比例 ----
         try:
             fams = set(tkfont.families(self))
         except Exception:
@@ -1210,84 +1233,101 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
                           if f in fams), fam_cjk)
         fam_mono = next((f for f in ("Consolas", "Cascadia Mono", "DejaVu Sans Mono",
                                      "Courier New") if f in fams), fam_latin)
-        # CTkFont 字号是绝对像素（不随 DPI 缩放），而控件高度会被 CTk 内部
-        # 按窗口缩放放大——这里手动给字号乘同一系数，保持文字与控件同比例
         try:
             self._win_scale = ctk.ScalingTracker.get_window_scaling(self)
         except Exception:
             self._win_scale = 1.0
         _fpx = lambda n: max(1, round(n * self._win_scale))
-        self.f_title = ctk.CTkFont(family=fam_cjk, size=_fpx(26), weight="bold")
-        self.f_section = ctk.CTkFont(family=fam_cjk, size=_fpx(14), weight="bold")
+        self.f_title = ctk.CTkFont(family=fam_cjk, size=_fpx(21), weight="bold")
+        self.f_card = ctk.CTkFont(family=fam_cjk, size=_fpx(14), weight="bold")
+        self.f_brand = ctk.CTkFont(family=fam_cjk, size=_fpx(14), weight="bold")
         self.f_label = ctk.CTkFont(family=fam_cjk, size=_fpx(13))
-        self.f_label_bold = ctk.CTkFont(family=fam_cjk, size=_fpx(13), weight="bold")
         self.f_hint = ctk.CTkFont(family=fam_cjk, size=_fpx(12))
-        # 等宽字体只用于编号、版本号、百分比与密钥，制造"控制台"的质感
-        self.f_mono = ctk.CTkFont(family=fam_mono, size=_fpx(11))
-        self.f_num = ctk.CTkFont(family=fam_mono, size=_fpx(13))
-        self.f_num_s = ctk.CTkFont(family=fam_mono, size=_fpx(11))
+        # 等宽字体只用于密钥、路径、版本号与数值，制造"控制台"的质感
+        self.f_mono = ctk.CTkFont(family=fam_mono, size=_fpx(12))
+        self.f_nav = ctk.CTkFont(family=fam_cjk, size=_fpx(13))
+        self.f_num = ctk.CTkFont(family=fam_mono, size=_fpx(12))
+        # tk 原生控件（Canvas 滚动区、指示条）不受 CTk 缩放，手动乘同一系数
+        self._px = lambda n: max(1, int(round(n * self._win_scale)))
 
         # ---- 表单变量（语义与经典版一致，_save 输出相同的 patch） ----
         zcfg = cfg.get("zhipu", {})
         vcfg = cfg.get("volcano", {})
         self.z_en = tk.BooleanVar(value=bool(zcfg.get("enabled", True)))
-        self.z_key = tk.StringVar(value=zcfg.get("api_key", ""))
-        self.z_base = tk.StringVar(value=zcfg.get("base_url", "open.bigmodel.cn"))
+        self.z_key = tk.StringVar(value=str(zcfg.get("api_key", "")))
+        self.z_base = tk.StringVar(value=str(zcfg.get("base_url", "open.bigmodel.cn")))
         self.z_30d = tk.BooleanVar(value=bool(zcfg.get("show_30d", True)))
         self.z_15d = tk.BooleanVar(value=bool(zcfg.get("show_15d", True)))
         self.z_7d = tk.BooleanVar(value=bool(zcfg.get("show_7d", True)))
         self.v_en = tk.BooleanVar(value=bool(vcfg.get("enabled", True)))
-        self.v_ak = tk.StringVar(value=vcfg.get("access_key_id", ""))
-        self.v_sk = tk.StringVar(value=vcfg.get("secret_access_key", ""))
-        self.v_region = tk.StringVar(value=vcfg.get("region", "cn-beijing"))
+        self.v_ak = tk.StringVar(value=str(vcfg.get("access_key_id", "")))
+        self.v_sk = tk.StringVar(value=str(vcfg.get("secret_access_key", "")))
+        self.v_region = tk.StringVar(value=str(vcfg.get("region", "cn-beijing")))
         theme_val = str(cfg.get("theme", "auto") or "auto")
         if theme_val not in ("auto", "dark", "light"):
             theme_val = "auto"
-        self.theme_choice = tk.StringVar(value=THEME_LABELS[theme_val])
+        self.theme_choice = tk.StringVar(value=theme_val)
         self.edge_dock = tk.BooleanVar(value=bool(cfg.get("edge_dock", True)))
-        self.dock_len = tk.IntVar(
-            value=min(240, max(40, int(cfg.get("dock_len", 150)))))
-        scale_now = float(cfg.get("ui_scale", 1.0))
+        self.dock_len = tk.IntVar(value=_to_int(cfg.get("dock_len", 150), 150, 40, 240))
+        try:
+            scale_now = float(cfg.get("ui_scale", 1.0))
+        except (TypeError, ValueError):
+            scale_now = 1.0
         nearest = min(SCALE_STEPS, key=lambda s: abs(s - scale_now))
-        self.scale_var = tk.StringVar(value=SCALE_SHORT[nearest])
-        self.opacity = tk.IntVar(
-            value=max(60, int(round(float(cfg.get("opacity", 0.96)) * 100))))
-        self.refresh = tk.IntVar(value=max(1, int(cfg.get("refresh_minutes", 5))))
-        self.warn = tk.IntVar(value=int(cfg.get("warn_percent", 80)))
-        self.crit = tk.IntVar(value=int(cfg.get("critical_percent", 95)))
+        self.scale_var = tk.StringVar(value=str(nearest))
+        try:
+            opacity = int(round(float(cfg.get("opacity", 0.96)) * 100))
+        except (TypeError, ValueError):
+            opacity = 96
+        self.opacity = tk.IntVar(value=min(100, max(60, opacity)))
+        self.refresh = tk.IntVar(value=_to_int(cfg.get("refresh_minutes", 5), 5, 1, 120))
+        self.warn = tk.IntVar(value=_to_int(cfg.get("warn_percent", 80), 80, 10, 98))
+        self.crit = tk.IntVar(value=_to_int(cfg.get("critical_percent", 95), 95, 11, 99))
         self.notify_en = tk.BooleanVar(value=bool(cfg.get("notify", True)))
         self.burn_en = tk.BooleanVar(value=bool(cfg.get("burn_predict", False)))
 
-        self._segmented_list = []
+        self._pill_groups = []      # [(按钮列表, 变量)]：分段选择器，点击后重绘
+        self._pages = {}            # key -> 页面 frame（导航切换时懒构建）
+        self._nav_items = {}        # key -> 导航按钮
+        self._active_page = ""
+        self._thumb_ry = 0          # 指示条拖动起点（屏幕坐标）
+        self._thumb_f0 = 0.0        # 指示条拖动起点对应的滚动比例
 
-        # ---- 布局：标题区 + 单页双栏（无侧栏、无分页） + 固定底栏 ----
+        # ---- 布局：底部操作栏 + 左侧导航 + 右侧卡片内容（可滚动） ----
         self._build_footer()
-        self._build_header()
-        self._scroll = ctk.CTkScrollableFrame(
-            self, fg_color="transparent",
-            scrollbar_button_color=self.INPUT_LINE,
-            scrollbar_button_hover_color=self.HINT)
-        self._scroll.pack(fill="both", expand=True)
-        self._scroll._parent_canvas.bind(
-            "<Configure>", lambda e: self._sync_scrollbar(), add="+")
-        self._cols = ctk.CTkFrame(self._scroll, fg_color="transparent")
-        self._cols.pack(fill="both", expand=True, padx=32, pady=(0, 8))
-        self._cols.grid_columnconfigure(0, weight=1, uniform="col")
-        self._cols.grid_columnconfigure(1, weight=1, uniform="col")
-        self._col_l = ctk.CTkFrame(self._cols, fg_color="transparent")
-        self._col_l.grid(row=0, column=0, sticky="nsew", padx=(0, 13))
-        self._col_r = ctk.CTkFrame(self._cols, fg_color="transparent")
-        self._col_r.grid(row=0, column=1, sticky="nsew", padx=(13, 0))
-        # 先建左栏（密钥），窗口先出来；右栏 40ms 后补齐，打开不卡
-        self._build_providers_column()
+        self._build_sidebar()
+        main = tk.Frame(self, bg=self.BG, bd=0, highlightthickness=0)
+        main.pack(side="left", fill="both", expand=True)
+        self._scroll = tk.Canvas(main, bg=self.BG, highlightthickness=0, bd=0)
+        self._scroll.pack(side="left", fill="both", expand=True)
+        self._scroll.configure(yscrollincrement=self._px(20))
+        self._host = ctk.CTkFrame(self._scroll, fg_color=self.BG,
+                                  corner_radius=0, bg_color=self.BG)
+        self._scroll_item = self._scroll.create_window(
+            (0, 0), window=self._host, anchor="nw")
+        self._host.bind("<Configure>", self._on_host_configure)
+        self._scroll.bind("<Configure>", self._on_canvas_configure)
+        # 滚动指示条：悬浮在内容区右缘，内容装得下时自动隐藏
+        self._thumb = tk.Frame(main, bg=self.THUMB, bd=0,
+                               highlightthickness=0, cursor="hand2")
+        self._thumb.bind("<Button-1>", self._thumb_drag_start)
+        self._thumb.bind("<B1-Motion>", self._thumb_drag)
+        self._bind_wheel()
 
-        # ---- 尺寸：固定舒适尺寸（内容超出时窗口内滚动） ----
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        w = int(min(980, sw * 0.94))
-        h = int(min(920, sh * 0.92))
+        self._show_page("providers")
+
+        # ---- 尺寸：舒适默认尺寸，内容超出时窗口内滚动 ----
+        # CTk 的 geometry/minsize 收逻辑像素，内部会再乘窗口缩放系数；
+        # winfo_screen* 返回物理像素，先折算成逻辑值再算，否则高 DPI 下
+        # 「屏幕高度的 0.9」这道上限会被放大后顶穿
+        dscale = max(0.01, getattr(self, "_win_scale", 1.0))
+        sw = max(1, int(self.winfo_screenwidth() / dscale))
+        sh = max(1, int(self.winfo_screenheight() / dscale))
+        w = int(min(940, sw * 0.94))
+        h = int(min(720, sh * 0.9))
         self.geometry("%dx%d+%d+%d" % (
             w, h, max(0, (sw - w) // 2), max(0, (sh - h) // 2)))
-        self.minsize(min(820, w), min(560, h))
+        self.minsize(min(780, w), min(560, h))
         self.update_idletasks()
         apply_immersive_titlebar(widget_hwnd(self), dark=self.is_dark)
 
@@ -1298,149 +1338,188 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
             pass
         self.deiconify()
         self._fade_in(0)
-        self.after(40, self._build_right_column)
         try:
             self.grab_set()
         except tk.TclError:
             pass
         self.focus_set()
         self.bind("<Escape>", lambda e: self._close())
+        self.protocol("WM_DELETE_WINDOW", self._close)
 
-    def _build_right_column(self):
-        """右栏（外观 / 行为）延后构建，把打开耗时压到最低。"""
-        self._build_appearance_column()
-        self._build_behavior_column()
-        self._paint_segmented()
-        self._sync_scrollbar()
-
-    def _sync_scrollbar(self):
-        """内容装得下时把滚动条收起来（Tk 的滚动条默认常驻，会留一条竖线）。"""
-        try:
-            cv = self._scroll._parent_canvas
-            sb = self._scroll._scrollbar
-            need = self._scroll.winfo_reqheight() > cv.winfo_height() + 2
-            if need and not sb.winfo_ismapped():
-                sb.grid()
-            elif not need and sb.winfo_ismapped():
-                sb.grid_remove()
-        except Exception:
-            pass
-
-    def _fade_in(self, step):
-        """60ms 快速淡入。alpha 不支持时静默跳过。"""
-        alpha = min(1.0, 0.2 + step * 0.2)
-        try:
-            self.attributes("-alpha", alpha)
-        except Exception:
-            return
-        if alpha < 1.0 and self.winfo_exists():
-            self.after(15, lambda: self._fade_in(step + 1))
-
-    # ---------------- 结构辅助 ----------------
+    # ---------------- 骨架：操作栏 / 导航 / 页面 ----------------
 
     def _build_footer(self):
-        bar = ctk.CTkFrame(self, fg_color=self.BG, corner_radius=0, height=66)
+        bar = ctk.CTkFrame(self, fg_color=self.BG, corner_radius=0, height=64)
         bar.pack(side="bottom", fill="x")
         bar.pack_propagate(False)
         ctk.CTkFrame(bar, height=1, fg_color=self.LINE,
                      corner_radius=0).pack(side="top", fill="x")
         ctk.CTkButton(
-            bar, text="保存并应用", width=136, height=38, corner_radius=3,
+            bar, text="保存并应用", width=132, height=38, corner_radius=8,
             fg_color=self.ACCENT, hover_color=self.ACCENT_HI,
-            text_color=self.ACCENT_TEXT, font=self.f_label_bold,
-            command=self._save).pack(side="right", padx=(10, 34))
+            text_color=self.ON_ACCENT, font=self.f_label,
+            command=self._save).pack(side="right", padx=(10, 30))
         ctk.CTkButton(
-            bar, text="取消", width=84, height=38, corner_radius=3,
-            fg_color="transparent", hover_color=self.PANEL_HI,
+            bar, text="取消", width=84, height=38, corner_radius=8,
+            fg_color="transparent", hover_color=self.NAV_HI,
             text_color=self.DIM, font=self.f_label,
             command=self._close).pack(side="right")
-        ctk.CTkLabel(bar, text="保存后立即生效", font=self.f_hint,
-                     text_color=self.HINT).pack(side="left", padx=34)
+        ctk.CTkLabel(bar, text="ESC 关闭 · 保存后立即生效", font=self.f_hint,
+                     text_color=self.HINT).pack(side="left", padx=30)
 
-    def _build_header(self):
-        head = ctk.CTkFrame(self, fg_color="transparent")
-        head.pack(side="top", fill="x", padx=34, pady=(24, 12))
-        left = ctk.CTkFrame(head, fg_color="transparent")
-        left.pack(side="left", anchor="n")
-        ctk.CTkLabel(left, text="LLM USAGE WIDGET", font=self.f_mono,
-                     text_color=self.ACCENT, anchor="w").pack(fill="x")
-        ctk.CTkLabel(left, text="设置", font=self.f_title,
-                     text_color=self.TEXT, anchor="w").pack(fill="x", pady=(2, 0))
-        right = ctk.CTkFrame(head, fg_color="transparent")
-        right.pack(side="right", anchor="ne", pady=(4, 0))
-        ctk.CTkLabel(right, text="v" + APP_VERSION, font=self.f_mono,
-                     text_color=self.DIM, anchor="e").pack(fill="x")
-        ctk.CTkLabel(right, text="ESC 关闭", font=self.f_mono,
-                     text_color=self.HINT, anchor="e").pack(fill="x", pady=(4, 0))
+    def _build_sidebar(self):
+        side = ctk.CTkFrame(self, fg_color=self.NAV, corner_radius=0, width=186)
+        side.pack(side="left", fill="y")
+        side.pack_propagate(False)
+        brand = ctk.CTkFrame(side, fg_color="transparent", corner_radius=0)
+        brand.pack(fill="x", padx=20, pady=(24, 18))
+        ctk.CTkLabel(brand, text=APP_NAME, font=self.f_brand,
+                     text_color=self.TEXT, anchor="w").pack(fill="x")
+        ctk.CTkLabel(brand, text="v" + APP_VERSION, font=self.f_mono,
+                     text_color=self.HINT, anchor="w").pack(fill="x", pady=(2, 0))
+        for key, label, _sub, _hue in SET_PAGES:
+            item = ctk.CTkButton(
+                side, text="   " + label, anchor="w", height=38,
+                corner_radius=8, font=self.f_nav,
+                fg_color="transparent", hover_color=self.NAV_HI,
+                text_color=self.DIM,
+                command=lambda k=key: self._show_page(k))
+            item.pack(fill="x", padx=10, pady=2)
+            self._nav_items[key] = item
 
-    def _section(self, parent, num, title, top=0):
-        """分节标题：编号（等宽、强调色）+ 中文标题 + 一条拉到右边缘的发丝线。"""
-        head = ctk.CTkFrame(parent, fg_color="transparent")
-        head.pack(fill="x", pady=(top, 10))
-        ctk.CTkLabel(head, text=num, font=self.f_mono,
-                     text_color=self.ACCENT).pack(side="left")
-        ctk.CTkLabel(head, text=title, font=self.f_section,
-                     text_color=self.TEXT).pack(side="left", padx=(9, 12))
-        ctk.CTkFrame(head, height=1, fg_color=self.LINE).pack(
-            side="left", fill="x", expand=True, pady=(1, 0))
+    def _show_page(self, key):
+        """切换功能页：页面懒构建（首次进入才创建，打开窗口更快）。"""
+        if key not in self._pages:
+            self._pages[key] = self._make_page(key)
+        for page in self._pages.values():
+            page.pack_forget()
+        self._pages[key].pack(fill="x")
+        self._active_page = key
+        try:
+            self._scroll.yview_moveto(0.0)
+        except Exception:
+            pass
+        for k, btn in self._nav_items.items():
+            on = (k == key)
+            btn.configure(fg_color=self.NAV_ACT if on else "transparent",
+                          hover_color=self.NAV_HI,
+                          text_color=self.TEXT if on else self.DIM)
+        self._upd_thumb()
 
-    def _panel(self, parent, top=0):
-        """一个设置面板：浅色底 + 直角细边，内部用发丝线分行。"""
-        panel = ctk.CTkFrame(parent, fg_color=self.PANEL, corner_radius=4,
-                             border_width=1, border_color=self.LINE)
-        panel.pack(fill="x", pady=(top, 0))
-        panel._rows = 0
-        return panel
+    def _make_page(self, key):
+        page = ctk.CTkFrame(self._host, fg_color="transparent", corner_radius=0)
+        self._page_head(page, key)
+        builders = {
+            "providers": self._page_providers,
+            "refresh": self._page_refresh,
+            "appearance": self._page_appearance,
+            "notify": self._page_notify,
+            "advanced": self._page_advanced,
+        }
+        builders.get(key, self._page_providers)(page)
+        ctk.CTkFrame(page, height=16, fg_color="transparent",
+                     corner_radius=0).pack(fill="x")
+        return page
 
-    def _divider(self, panel):
-        if getattr(panel, "_rows", 0) > 0:
-            ctk.CTkFrame(panel, height=1, fg_color=self.LINE).pack(
-                fill="x", padx=16)
-        panel._rows = getattr(panel, "_rows", 0) + 1
+    def _page_head(self, page, key):
+        _key, label, sub, hue = next(p for p in SET_PAGES if p[0] == key)
+        head = ctk.CTkFrame(page, fg_color="transparent", corner_radius=0)
+        head.pack(fill="x", padx=32, pady=(26, 4))
+        row = ctk.CTkFrame(head, fg_color="transparent", corner_radius=0)
+        row.pack(fill="x")
+        ctk.CTkFrame(row, width=10, height=10, fg_color=hue, corner_radius=5,
+                     bg_color=self.BG).pack(side="left", padx=(0, 10))
+        ctk.CTkLabel(row, text=label, font=self.f_title, text_color=self.TEXT,
+                     anchor="w").pack(side="left")
+        ctk.CTkLabel(head, text=sub, font=self.f_hint, text_color=self.HINT,
+                     anchor="w", justify="left", wraplength=480).pack(
+            fill="x", padx=(20, 0), pady=(5, 12))
 
-    def _panel_head(self, panel, title, accent=None, enable_var=None):
-        head = ctk.CTkFrame(panel, fg_color="transparent")
-        head.pack(fill="x", padx=16, pady=(12, 11))
-        ctk.CTkFrame(head, width=7, height=7,
-                     fg_color=accent or self.ACCENT,
-                     corner_radius=2).pack(side="left", padx=(0, 9))
-        ctk.CTkLabel(head, text=title, font=self.f_label_bold,
-                     text_color=self.TEXT).pack(side="left")
-        if enable_var is not None:
-            self._switch(head, enable_var).pack(side="right")
-        self._divider(panel)
+    # ---------------- 卡片与行 ----------------
 
-    def _prow(self, panel, title, desc=None, pad=6):
-        """面板内的一行：左标题（可带说明），右控件。"""
-        self._divider(panel)
-        row = ctk.CTkFrame(panel, fg_color="transparent")
-        row.pack(fill="x", padx=16, pady=pad)
-        row.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(row, text=title, font=self.f_label,
-                     text_color=self.TEXT, anchor="w", justify="left"
-                     ).grid(row=0, column=0, sticky="w", padx=(0, 10))
+    def _card(self, parent, title, dot=None, switch_var=None, desc=None):
+        """一张设置卡片：圆角面板 + 彩色圆点标题 + 右上角可选开关。"""
+        card = ctk.CTkFrame(parent, fg_color=self.CARD, corner_radius=12,
+                            border_width=1, border_color=self.CARD_LINE,
+                            bg_color=self.BG)
+        card.pack(fill="x", pady=(0, 14))
+        head = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
+        head.pack(fill="x", padx=20, pady=(16, 4 if desc else 10))
+        if dot:
+            ctk.CTkFrame(head, width=9, height=9, fg_color=dot, corner_radius=4,
+                         bg_color=self.CARD).pack(side="left", padx=(0, 9))
+        ctk.CTkLabel(head, text=title, font=self.f_card, text_color=self.TEXT,
+                     anchor="w").pack(side="left")
+        if switch_var is not None:
+            self._switch(head, switch_var).pack(side="right")
         if desc:
-            ctk.CTkLabel(row, text=desc, font=self.f_hint,
-                         text_color=self.HINT, anchor="w", justify="left",
-                         wraplength=240).grid(row=1, column=0, sticky="w",
-                                              padx=(0, 10), pady=(3, 0))
-        right = ctk.CTkFrame(row, fg_color="transparent")
+            ctk.CTkLabel(card, text=desc, font=self.f_hint, text_color=self.HINT,
+                         anchor="w", justify="left", wraplength=480).pack(
+                fill="x", padx=20, pady=(0, 10))
+        return card
+
+    def _divider(self, card):
+        """行间发丝分隔线（卡片第一行与卡片头之间也有一条）。"""
+        ctk.CTkFrame(card, height=1, fg_color=self.LINE,
+                     corner_radius=0).pack(fill="x", padx=20)
+
+    def _row(self, card, title, desc=None):
+        """设置行：标题(+说明)在左，控件容器在右。"""
+        self._divider(card)
+        row = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
+        row.pack(fill="x", padx=20, pady=(10, 10))
+        row.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(row, text=title, font=self.f_label, text_color=self.TEXT,
+                     anchor="w", justify="left").grid(
+            row=0, column=0, sticky="w", padx=(0, 12))
+        dlab = None
+        if desc:
+            dlab = ctk.CTkLabel(row, text=desc, font=self.f_hint,
+                                text_color=self.HINT, anchor="w", justify="left",
+                                wraplength=300)
+            dlab.grid(row=1, column=0, sticky="w", padx=(0, 12), pady=(3, 0))
+        right = ctk.CTkFrame(row, fg_color="transparent", corner_radius=0)
         right.grid(row=0, column=1, rowspan=2 if desc else 1, sticky="e")
+        if dlab is not None:
+            # 窗口收窄时 grid 收缩带 weight 的列 0：同步压缩说明的换行宽度，
+            # 避免固定 wraplength 的说明文字压到右侧控件上。
+            # ev.width / winfo_reqwidth 是物理像素，CTkLabel 的 wraplength
+            # 是逻辑值（内部会再乘缩放系数），须除以缩放系数折算一致
+            def _fit(width, _d=dlab, _r=right):
+                try:
+                    s = ctk.ScalingTracker.get_widget_scaling(_d)
+                except Exception:
+                    s = 1.0
+                wl = int(max(140, min(300, (width - _r.winfo_reqwidth())
+                                          / max(0.01, s) - 24)))
+                if int(_d.cget("wraplength")) != wl:
+                    _d.configure(wraplength=wl)
+            row.bind("<Configure>", lambda ev, _f=_fit: _f(ev.width))
+
+            def _fit_soon(_f=_fit):
+                try:
+                    if row.winfo_exists():
+                        _f(row.winfo_width())
+                except tk.TclError:
+                    pass
+            # 控件在 _row 返回后才挂进 right，此时 row 宽度不变、Configure
+            # 不会再触发：等事件循环一轮后按实际控件宽度再校一次
+            row.after_idle(_fit_soon)
         return right
 
-    def _pfield(self, panel, label, var, hint=None, secret=False):
-        """面板内的字段行：左标签、右输入框，说明挂在输入框下方。"""
-        self._divider(panel)
-        wrap = ctk.CTkFrame(panel, fg_color="transparent")
-        wrap.pack(fill="x", padx=16, pady=10)
+    def _field(self, card, label, var, hint=None, secret=False):
+        """表单字段行：左标签、右圆角输入框，说明挂在输入框下方。"""
+        self._divider(card)
+        wrap = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
+        wrap.pack(fill="x", padx=20, pady=(10, 12))
         wrap.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(wrap, text=label, width=104, font=self.f_hint,
+        ctk.CTkLabel(wrap, text=label, width=110, font=self.f_hint,
                      text_color=self.DIM, anchor="w").grid(
             row=0, column=0, sticky="w", padx=(0, 12))
         entry = ctk.CTkEntry(
-            wrap, textvariable=var, height=34, font=self.f_num,
+            wrap, textvariable=var, height=36, font=self.f_mono,
             fg_color=self.INPUT, border_color=self.INPUT_LINE,
-            border_width=1, corner_radius=3, text_color=self.TEXT)
+            border_width=1, corner_radius=8, text_color=self.TEXT)
         entry.grid(row=0, column=1, sticky="ew")
         if secret:
             entry.configure(show="*")
@@ -1453,198 +1532,356 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
                     entry.configure(show="*")
                     btn.configure(text="显示")
 
-            btn = ctk.CTkButton(wrap, text="显示", width=40, height=24,
-                                corner_radius=3, font=self.f_hint,
-                                fg_color="transparent", hover_color=self.PANEL_HI,
-                                text_color=self.HINT, command=_toggle)
-            btn.grid(row=0, column=2, padx=(6, 0))
+            btn = ctk.CTkButton(wrap, text="显示", width=48, height=26,
+                                corner_radius=6, font=self.f_hint,
+                                fg_color="transparent", hover_color=self.LINE,
+                                text_color=self.DIM, command=_toggle)
+            btn.grid(row=0, column=2, padx=(8, 0))
         if hint:
             ctk.CTkLabel(wrap, text=hint, font=self.f_hint, text_color=self.HINT,
                          anchor="w").grid(row=1, column=1, columnspan=2,
-                                          sticky="w", pady=(4, 0))
-
+                                          sticky="w", pady=(5, 0))
         entry.bind("<FocusIn>",
                    lambda e: entry.configure(border_color=self.ACCENT), add="+")
         entry.bind("<FocusOut>",
                    lambda e: entry.configure(border_color=self.INPUT_LINE), add="+")
         return entry
 
-    def _pchecks(self, panel, items):
-        """面板内的复选框行（近 N 天开关）。"""
-        self._divider(panel)
-        row = ctk.CTkFrame(panel, fg_color="transparent")
-        row.pack(fill="x", padx=16, pady=10)
+    def _checks(self, card, items, title=None):
+        """复选框行（智谱近 N 天用量开关）。"""
+        self._divider(card)
+        row = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
+        row.pack(fill="x", padx=20, pady=(8, 12))
+        if title:
+            ctk.CTkLabel(row, text=title, font=self.f_label,
+                         text_color=self.TEXT).pack(side="left", padx=(0, 14))
         for text, var in items:
             ctk.CTkCheckBox(row, text=text, variable=var, font=self.f_hint,
                             text_color=self.DIM, fg_color=self.ACCENT,
-                            hover_color=self.ACCENT_HI, border_color=self.INPUT_LINE,
-                            checkmark_color=self.ACCENT_TEXT, corner_radius=2,
+                            hover_color=self.ACCENT_HI,
+                            border_color=self.INPUT_LINE,
+                            checkmark_color=self.ON_ACCENT, corner_radius=4,
                             checkbox_width=17, checkbox_height=17
-                            ).pack(side="left", padx=(0, 18))
+                            ).pack(side="left", padx=(0, 16))
 
-    def _pautostart(self, panel):
-        """开机自启：一行标题 + 两个小按钮。"""
-        self._divider(panel)
-        row = ctk.CTkFrame(panel, fg_color="transparent")
-        row.pack(fill="x", padx=16, pady=11)
-        row.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(row, text="开机自启", font=self.f_label,
-                     text_color=self.TEXT, anchor="w").grid(row=0, column=0, sticky="w")
-        ctk.CTkLabel(row, text="登录 Windows 后自动启动", font=self.f_hint,
-                     text_color=self.HINT, anchor="w").grid(
-            row=1, column=0, sticky="w", pady=(3, 0))
-        btns = ctk.CTkFrame(row, fg_color="transparent")
-        btns.grid(row=0, column=1, rowspan=2, sticky="e")
-        for text, cb in (("设置", self.on_autostart[0]),
-                         ("取消", self.on_autostart[1])):
-            ctk.CTkButton(btns, text=text, width=56, height=28, corner_radius=3,
-                          font=self.f_hint, fg_color=self.PANEL_HI,
-                          hover_color=self.LINE, text_color=self.TEXT,
-                          command=cb).pack(side="left", padx=(6, 0))
+    def _info(self, card, title, value):
+        """只读信息行：左标题，右说明（等宽字体，路径/版本等）。"""
+        self._divider(card)
+        row = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
+        row.pack(fill="x", padx=20, pady=(10, 10))
+        row.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(row, text=title, font=self.f_label, text_color=self.TEXT,
+                     anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 12))
+        ctk.CTkLabel(row, text=value, font=self.f_mono, text_color=self.DIM,
+                     anchor="w", justify="left", wraplength=340).grid(
+            row=0, column=1, sticky="w")
 
-    # ---------------- 控件辅助 ----------------
+    def _buttons_row(self, card, specs):
+        """按钮行：specs = [(文字, 回调, 是否主按钮), ...]，回调为 None 则跳过。"""
+        self._divider(card)
+        row = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
+        row.pack(fill="x", padx=20, pady=(10, 14))
+        for text, cmd, primary in specs:
+            if cmd is None:
+                continue
+            ctk.CTkButton(row, text=text, width=104, height=32, corner_radius=8,
+                          font=self.f_hint,
+                          fg_color=self.ACCENT if primary else self.INPUT,
+                          hover_color=self.ACCENT_HI if primary else self.LINE,
+                          text_color=self.ON_ACCENT if primary else self.TEXT,
+                          command=cmd).pack(side="left", padx=(0, 8))
+
+    # ---------------- 控件：开关 / 步进器 / 分段选择器 ----------------
 
     def _switch(self, parent, var):
-        # 浅色主题用深色滑块：白色滑块会和白色面板糊在一起，只剩半圈橙色
         return ctk.CTkSwitch(
-            parent, text="", variable=var, width=44,
-            switch_width=40, switch_height=20,
+            parent, text="", variable=var, width=48,
+            switch_width=42, switch_height=22,
             progress_color=self.ACCENT, fg_color=self.INPUT_LINE,
-            button_color=self.SWITCH_KNOB,
-            button_hover_color=self.SWITCH_KNOB)
+            button_color=self.KNOB, button_hover_color=self.KNOB)
 
     def _stepper(self, right, var, lo, hi, step=1, unit=""):
-        box = ctk.CTkFrame(right, fg_color=self.INPUT, corner_radius=3,
+        """步进器：加减按钮 + 数值，整体圆角胶囊。"""
+        box = ctk.CTkFrame(right, fg_color=self.INPUT, corner_radius=8,
                            border_width=1, border_color=self.INPUT_LINE)
         box.pack(side="left")
 
         def _click(d):
             try:
-                v = int(var.get()) + d
+                v = int(float(var.get())) + d
             except Exception:
                 v = lo
             var.set(min(hi, max(lo, v)))
-        ctk.CTkButton(box, text="−", width=30, height=30, corner_radius=2,
-                      fg_color="transparent", hover_color=self.PANEL_HI,
+
+        ctk.CTkButton(box, text="−", width=30, height=30, corner_radius=6,
+                      fg_color="transparent", hover_color=self.LINE,
                       text_color=self.DIM, font=self.f_num,
                       command=lambda: _click(-step)).pack(
-            side="left", padx=(1, 0), pady=1)
-        ctk.CTkLabel(box, textvariable=var, width=48, font=self.f_num,
+            side="left", padx=(2, 0), pady=2)
+        ctk.CTkLabel(box, textvariable=var, width=44, font=self.f_num,
                      text_color=self.TEXT).pack(side="left", padx=2)
-        ctk.CTkButton(box, text="+", width=30, height=30, corner_radius=2,
-                      fg_color="transparent", hover_color=self.PANEL_HI,
+        ctk.CTkButton(box, text="+", width=30, height=30, corner_radius=6,
+                      fg_color="transparent", hover_color=self.LINE,
                       text_color=self.DIM, font=self.f_num,
                       command=lambda: _click(step)).pack(
-            side="left", padx=(0, 1), pady=1)
+            side="left", padx=(0, 2), pady=2)
         if unit:
-            ctk.CTkLabel(right, text=unit, font=self.f_mono,
-                         text_color=self.HINT).pack(side="left", padx=(7, 0))
+            ctk.CTkLabel(right, text=unit, font=self.f_hint,
+                         text_color=self.HINT).pack(side="left", padx=(8, 0))
 
-    def _segmented(self, right, values, var, font=None):
-        seg = ctk.CTkSegmentedButton(
-            right, values=list(values), variable=var,
-            font=font or self.f_label, height=30, corner_radius=3,
-            selected_color=self.ACCENT, selected_hover_color=self.ACCENT_HI,
-            unselected_color=self.INPUT, unselected_hover_color=self.PANEL_HI,
-            text_color=self.TEXT,
-            command=lambda _v, var=var: self._paint_segmented(var))
-        seg.set(var.get())
-        seg.pack(side="left")
-        self._segmented_list.append((seg, var))
-        return seg
+    def _pill_select(self, right, options, var, width=56):
+        """分段选择器：一组 CTkButton 自拼的"药丸"选择器。
 
-    def _paint_segmented(self, var=None):
-        """分段控件文字分态着色：选中格深色文字配蓝底，未选中格浅色文字
-        配深底。CTkSegmentedButton 只支持全局 text_color，深色文字在
-        未选中的深底格上会看不见，需按内部按钮逐格设置。
-        传 var 时只重绘对应控件，避免每次点击遍历全部。"""
-        for seg, v in self._segmented_list:
+        不用 CTkSegmentedButton——它只支持全局文字色，深色文字在选中格的
+        彩色底上对比度不足，旧版为此访问过它内部的按钮字典（私有属性）。"""
+        bar = ctk.CTkFrame(right, fg_color=self.INPUT, corner_radius=9,
+                           border_width=1, border_color=self.INPUT_LINE)
+        bar.pack(side="left")
+        btns = []
+        for text, value in options:
+            b = ctk.CTkButton(bar, text=text, width=width, height=28,
+                              corner_radius=7, font=self.f_hint,
+                              fg_color="transparent", hover_color=self.LINE,
+                              text_color=self.DIM,
+                              command=lambda v=value: self._pick_pill(var, v))
+            b.pack(side="left", padx=2, pady=2)
+            btns.append((b, value))
+        self._pill_groups.append((btns, var))
+        self._paint_pills(var)
+        return bar
+
+    def _pick_pill(self, var, value):
+        var.set(value)
+        self._paint_pills(var)
+
+    def _paint_pills(self, var=None):
+        """按变量当前值重绘分段选择器的选中态。传 var 时只重绘对应一组。"""
+        for btns, v in self._pill_groups:
             if var is not None and v is not var:
                 continue
             cur = str(v.get())
+            for b, value in btns:
+                on = (str(value) == cur)
+                b.configure(fg_color=self.ACCENT if on else "transparent",
+                            hover_color=self.ACCENT_HI if on else self.LINE,
+                            text_color=self.ON_ACCENT if on else self.DIM)
+
+    # ---------------- 滚动 ----------------
+
+    def _bind_wheel(self):
+        # 滚轮滚动内容区。窗口是模态（grab_set），事件只会进入本窗口；
+        # 关闭时统一解绑，不污染全局
+        self.bind_all("<MouseWheel>", self._on_wheel, add="+")
+        for seq in ("<Button-4>", "<Button-5>"):  # Linux/X11 滚轮
+            self.bind_all(seq, self._on_wheel, add="+")
+
+    def _on_wheel(self, e):
+        if not self.winfo_exists():
+            return
+        num = getattr(e, "num", 0)
+        if num == 4:
+            step = -3
+        elif num == 5:
+            step = 3
+        else:
             try:
-                items = list(seg._buttons_dict.items())
+                step = int(-e.delta / 120) * 3
             except Exception:
-                continue
-            for value, btn in items:
-                btn.configure(text_color=self.ACCENT_TEXT
-                              if str(value) == cur else self.TEXT)
+                step = 0
+        if step:
+            self._scroll.yview_scroll(step, "units")
+            self._upd_thumb()
 
-    # ---------------- 左右两栏 ----------------
+    def _on_host_configure(self, _e):
+        self._scroll.configure(scrollregion=self._scroll.bbox("all"))
+        self._upd_thumb()
 
-    def _build_providers_column(self):
-        col = self._col_l
-        self._section(col, "01", "供应商密钥")
-        panel = self._panel(col)
-        self._panel_head(panel, "智谱 Coding Plan", C_ACCENT_Z, self.z_en)
-        self._pfield(panel, "API Key", self.z_key, secret=True,
-                     hint="智谱开放平台 → API Keys 页面")
-        self._pfield(panel, "接口地址", self.z_base,
-                     hint="国际版填 api.z.ai，一般不用改")
-        self._pchecks(panel, (("近 30 天", self.z_30d),
-                              ("近 15 天", self.z_15d),
-                              ("近 7 天", self.z_7d)))
+    def _on_canvas_configure(self, e):
+        self._scroll.itemconfigure(self._scroll_item, width=e.width)
+        self._upd_thumb()
 
-        panel = self._panel(col, top=16)
-        self._panel_head(panel, "火山引擎 Agent Plan", C_ACCENT_V, self.v_en)
-        self._pfield(panel, "AccessKey ID", self.v_ak,
-                     hint="控制台 → API 访问密钥（AKLT 开头）")
-        self._pfield(panel, "SecretAccessKey", self.v_sk, secret=True,
-                     hint="账号级密钥，非方舟模型 Key")
-        self._pfield(panel, "地域", self.v_region, hint="一般是 cn-beijing")
+    def _upd_thumb(self):
+        """滚动指示条：内容超出可视区时悬浮在右缘，装得下就隐藏。"""
+        try:
+            cv = self._scroll
+            total = max(1, self._host.winfo_reqheight())
+            view = cv.winfo_height()
+            if view < 10 or total <= view + 2:
+                self._thumb.place_forget()
+                return
+            f0, f1 = cv.yview()
+            th = max(self._px(40), int(view * (f1 - f0)))
+            y = int(f0 * view)
+            if self._thumb.winfo_ismapped():
+                self._thumb.place_configure(y=y, height=th)
+            else:
+                self._thumb.place(in_=cv, relx=1.0, x=-self._px(12), rely=0.0,
+                                  y=y, width=self._px(6), height=th)
+        except Exception:
+            pass
 
-        ctk.CTkFrame(col, height=24, fg_color="transparent").pack(fill="x")
-        ctk.CTkLabel(col, text="密钥只保存在 %APPDATA%\\LLM Usage Widget\\config.json，\n"
-                               "不经过任何第三方服务器。",
+    def _thumb_drag_start(self, e):
+        self._thumb_ry = e.y_root
+        self._thumb_f0 = self._scroll.yview()[0]
+
+    def _thumb_drag(self, e):
+        view = max(1, self._scroll.winfo_height())
+        f = min(1.0, max(0.0, self._thumb_f0 + (e.y_root - self._thumb_ry) / view))
+        self._scroll.yview_moveto(f)
+        self._upd_thumb()
+
+    def _fade_in(self, step):
+        """60ms 快速淡入。alpha 不支持时静默跳过。"""
+        alpha = min(1.0, 0.2 + step * 0.2)
+        try:
+            self.attributes("-alpha", alpha)
+        except Exception:
+            return
+        if alpha < 1.0 and self.winfo_exists():
+            self.after(15, lambda: self._fade_in(step + 1))
+
+    # ---------------- 五个功能页 ----------------
+
+    def _page_providers(self, page):
+        card = self._card(page, "智谱 GLM Coding Plan", C_ACCENT_Z, self.z_en,
+                          desc="GLM Coding Plan 套餐额度，含 5 小时 / 本周 / MCP 每月窗口")
+        self._field(card, "API Key", self.z_key, secret=True,
+                    hint="智谱开放平台 → API Keys 页面获取")
+        self._field(card, "接口地址", self.z_base,
+                    hint="国际版（z.ai）填 api.z.ai，一般不用改")
+        self._checks(card, (("近 30 天", self.z_30d), ("近 15 天", self.z_15d),
+                            ("近 7 天", self.z_7d)),
+                     title="详情面板历史用量")
+
+        card = self._card(page, "火山引擎 Agent Plan", C_ACCENT_V, self.v_en,
+                          desc="账号级访问密钥（AK/SK），含 5 小时 / 本周 / 本月窗口")
+        self._field(card, "AccessKey ID", self.v_ak,
+                    hint="控制台 → 右上角头像 → API 访问密钥（AKLT 开头）")
+        self._field(card, "SecretAccessKey", self.v_sk, secret=True,
+                    hint="账号级密钥，不是方舟里的模型 API Key")
+        self._field(card, "地域", self.v_region, hint="一般保持 cn-beijing")
+
+        ctk.CTkLabel(page, text="密钥只保存在本机 config.json，不经过任何第三方服务器；"
+                               "不需要的供应商可在卡片右上角关闭，悬浮窗即隐藏该卡片。",
                      font=self.f_hint, text_color=self.HINT, anchor="w",
-                     justify="left").pack(fill="x")
-        ctk.CTkFrame(col, height=14, fg_color="transparent").pack(fill="x")
+                     justify="left", wraplength=480).pack(
+            fill="x", padx=32, pady=(2, 10))
 
-    def _build_appearance_column(self):
-        col = self._col_r
-        self._section(col, "02", "外观")
-        panel = self._panel(col)
-        right = self._prow(panel, "配色主题", "自动跟随窗口背后的明暗")
-        self._segmented(right, (THEME_LABELS[k] for k in
-                                ("auto", "dark", "light")), self.theme_choice)
-        right = self._prow(panel, "界面缩放")
-        self._segmented(right, (SCALE_SHORT[s] for s in SCALE_STEPS),
-                        self.scale_var, font=self.f_num)
-        right = self._prow(panel, "窗口透明度", "60% ～ 100%，建议 80% 以上")
+    def _page_refresh(self, page):
+        card = self._card(page, "数据刷新", "#45c1a5",
+                          desc="两家供应商每次并行拉取，互不等待")
+        right = self._row(card, "自动刷新间隔",
+                          "手动编辑 config.json 后，右键「立即刷新」马上生效")
+        self._stepper(right, self.refresh, 1, 120, 1, "分钟")
+
+        card = self._card(page, "烧速预测", "#45c1a5", self.burn_en,
+                          desc="按近期用量外推 5 小时 / 本周窗口何时用尽，"
+                               "提前预警「撑不到重置」，默认关闭")
+        self._info(card, "数据来源", "本地 history.jsonl，每次刷新追加一条快照，保留 14 天")
+        self._info(card, "显示条件", "至少 4 个样本、跨度约 20 分钟以上；数据不足时保持安静")
+
+        card = self._card(page, "网络请求", "#45c1a5")
+        self._info(card, "超时与重试", "单次超时 20 秒；直连与系统代理两路都失败后自动重试一轮")
+        self._info(card, "密钥传输", "请求直接发往供应商官方 API，密钥不经过任何第三方")
+
+    def _page_appearance(self, page):
+        card = self._card(page, "配色主题", "#a88fff")
+        right = self._row(card, "配色主题",
+                          "自动模式感应悬浮窗背后的背景明暗；设置窗口跟随当前生效的主题")
+        self._pill_select(right, (("自动", "auto"), ("深色", "dark"),
+                                  ("浅色", "light")), self.theme_choice)
+
+        card = self._card(page, "界面尺寸", "#a88fff")
+        right = self._row(card, "界面缩放",
+                          "觉得悬浮窗太大或太小就调这里，保存后立即生效")
+        self._pill_select(right, tuple((SCALE_SHORT[s], str(s))
+                                       for s in SCALE_STEPS),
+                          self.scale_var, width=52)
+        right = self._row(card, "窗口透明度", "60% ～ 100%，建议 80% 以上")
         self._stepper(right, self.opacity, 60, 100, 1, "%")
-        right = self._prow(panel, "贴边收起", "拖到边缘自动收起")
+
+        card = self._card(page, "贴边收起", "#a88fff")
+        right = self._row(card, "贴边收起",
+                          "拖到屏幕边缘自动收起，只留进度小条，鼠标移上去弹出")
         self._switch(right, self.edge_dock).pack(side="left")
-        right = self._prow(panel, "长条长度")
+        right = self._row(card, "长条长度", "收起后小条的长度（40 ～ 240px）")
         self._stepper(right, self.dock_len, 40, 240, 10, "px")
 
-    def _build_behavior_column(self):
-        col = self._col_r
-        self._section(col, "03", "提醒与行为", top=22)
-        panel = self._panel(col)
-        right = self._prow(panel, "自动刷新间隔", "1 ～ 120 分钟")
-        self._stepper(right, self.refresh, 1, 120, 1, "分钟")
-        right = self._prow(panel, "黄色提醒阈值")
+    def _page_notify(self, page):
+        card = self._card(page, "预警阈值", "#f0b34e",
+                          desc="进度条、百分比与详情面板按当前档位变色")
+        right = self._row(card, "黄色提醒阈值", "用量超过黄档时变黄")
         self._stepper(right, self.warn, 10, 98, 1, "%")
-        right = self._prow(panel, "红色临界阈值")
+        right = self._row(card, "红色临界阈值",
+                          "超过红档变红；保存时自动保证黄档低于红档")
         self._stepper(right, self.crit, 11, 99, 1, "%")
-        right = self._prow(panel, "系统通知", "跨阈值 / 临近重置时提醒")
-        self._switch(right, self.notify_en).pack(side="left")
-        right = self._prow(panel, "烧速预测",
-                           "按近期用量外推何时用尽；默认关闭，记录本地历史")
-        self._switch(right, self.burn_en).pack(side="left")
-        self._pautostart(panel)
-        ctk.CTkFrame(col, height=14, fg_color="transparent").pack(fill="x")
+        right = self._row(card, "颜色示意")
+        for color, label in ((C_GREEN, "正常"), (C_YELLOW, "偏高"), (C_RED, "临界")):
+            ctk.CTkLabel(right, text=" " + label + " ", font=self.f_hint,
+                         fg_color=color, corner_radius=6,
+                         text_color="#171a20").pack(side="left", padx=(0, 6))
+
+        card = self._card(page, "系统通知", "#f0b34e", self.notify_en,
+                          desc="跨阈值或临近重置时弹 Windows 通知，每个窗口期只提醒一次")
+        self._info(card, "提醒时机",
+                   "跨黄/红阈值 · 临近重置（约 20 分钟内且用量偏高）· 烧速撑不到重置")
+
+    def _page_advanced(self, page):
+        card = self._card(page, "开机自启", "#9aa3ad",
+                          desc="登录 Windows 后自动启动悬浮窗，右键菜单里也可以设置")
+        self._buttons_row(card, (("设置自启", self.on_autostart[0], False),
+                                 ("取消自启", self.on_autostart[1], False)))
+
+        card = self._card(page, "应用", "#9aa3ad")
+        self._info(card, "当前版本", "v" + APP_VERSION + "（支持应用内增量更新）")
+        if self.on_update:
+            self._buttons_row(card, (("检查更新", self.on_update, True),))
+
+        card = self._card(page, "数据文件", "#9aa3ad",
+                          desc="配置与用量历史都是本机明文文件，升级、重装都不会丢失")
+        self._info(card, "配置文件", config_path())
+        self._buttons_row(card, (("打开配置文件夹", self._open_config_dir, False),))
+
+    def _open_config_dir(self):
+        path = data_dir()
+        try:
+            if hasattr(os, "startfile"):        # Windows 资源管理器
+                os.startfile(path)  # noqa: S606
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", path])
+        except Exception:
+            pass
 
     # ---------------- 交互 ----------------
 
     def _close(self):
+        try:
+            self.unbind_all("<MouseWheel>")
+            self.unbind_all("<Button-4>")
+            self.unbind_all("<Button-5>")
+        except Exception:
+            pass
+        cb, self.on_close = self.on_close, None
+        if cb:
+            try:
+                cb()
+            except Exception:
+                pass
         self.destroy()
 
     def _save(self):
-        label2theme = {v: k for k, v in THEME_LABELS.items()}
-        label2scale = {v: k for k, v in SCALE_SHORT.items()}
-        warn = min(98, max(10, int(self.warn.get())))
-        crit = min(99, max(11, int(self.crit.get())))
+        try:
+            scale = float(self.scale_var.get())
+        except (TypeError, ValueError):
+            scale = 1.0
+        if scale not in SCALE_STEPS:      # 脏值收敛到最近的合法档位
+            scale = min(SCALE_STEPS, key=lambda s: abs(s - scale))
+        theme = self.theme_choice.get()
+        if theme not in ("auto", "dark", "light"):
+            theme = "auto"
+        warn = min(98, max(10, _to_int(self.warn.get(), 80)))
+        crit = min(99, max(11, _to_int(self.crit.get(), 95)))
         if warn >= crit:  # 保证黄 < 红
             warn, crit = crit - 1, crit
         patch = {
@@ -1662,12 +1899,12 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
                 "secret_access_key": self.v_sk.get().strip(),
                 "region": self.v_region.get().strip() or "cn-beijing",
             },
-            "theme": label2theme.get(self.theme_choice.get(), "auto"),
+            "theme": theme,
             "edge_dock": bool(self.edge_dock.get()),
-            "dock_len": min(240, max(40, int(self.dock_len.get()))),
-            "ui_scale": label2scale.get(self.scale_var.get(), 1.0),
-            "opacity": min(1.0, max(0.6, int(self.opacity.get()) / 100.0)),
-            "refresh_minutes": min(120, max(1, int(self.refresh.get()))),
+            "dock_len": min(240, max(40, _to_int(self.dock_len.get(), 150))),
+            "ui_scale": scale,
+            "opacity": min(1.0, max(0.6, _to_int(self.opacity.get(), 96) / 100.0)),
+            "refresh_minutes": min(120, max(1, _to_int(self.refresh.get(), 5))),
             "warn_percent": warn,
             "critical_percent": crit,
             "notify": bool(self.notify_en.get()),
@@ -1678,12 +1915,14 @@ class SettingsDialogCtk(_CTK_TOPLEVEL_BASE):
 
 
 class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
-    """设置窗口：跟随应用主题的卡片式布局，窗口可自由调整大小（内容滚动）。
-    视觉语言对齐 Win11 设置 / CustomTkinter：左说明右控件、开关（Switch）、
-    分段选择器、步进器、圆角主按钮、深色沉浸标题栏；
-    全部用经典 tk 控件手绘实现，保持零第三方依赖。"""
+    """经典 Tk 回退版设置窗口（零第三方依赖）。
 
-    def __init__(self, master, cfg, on_apply, on_autostart, skin="dark"):
+    与 CustomTkinter 版保持同一布局逻辑：左侧导航 + 五个功能页 + 卡片式
+    分组 + 底部操作栏；开关、按钮、输入框、步进器等圆角控件用 Canvas
+    手绘；滚动为内容区 + 右缘悬浮指示条。"""
+
+    def __init__(self, master, cfg, on_apply, on_autostart, skin="dark",
+                 on_update=None, on_close=None):
         super().__init__(master)
         for k, v in SETTINGS_SKINS.get(skin, SETTINGS_SKINS["dark"]).items():
             setattr(self, k, v)
@@ -1696,10 +1935,9 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
         except Exception:
             pass
         self.on_apply = on_apply
-        self.on_autostart = on_autostart  # (enable_cb, disable_cb)
-
-        zcfg = cfg.get("zhipu", {})
-        vcfg = cfg.get("volcano", {})
+        self.on_autostart = on_autostart    # (enable_cb, disable_cb)
+        self.on_update = on_update          # 「检查更新」回调（可选）
+        self.on_close = on_close            # 窗口关闭回调（可选，用于清理引用）
 
         # ---- 字体：雅黑优先（含完整中英文字形，避免 Segoe UI 中文回退宋体发虚） ----
         try:
@@ -1710,59 +1948,66 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
                                 "Segoe UI Variable Text", "Segoe UI")
                     if f in fams), "TkDefaultFont")
         self.f_page = tkfont.Font(family=fam, size=14, weight="bold")
-        self.f_card = tkfont.Font(family=fam, size=10, weight="bold")
-        self.f_label = tkfont.Font(family=fam, size=9)
-        self.f_hint = tkfont.Font(family=fam, size=8)
+        self.f_brand = tkfont.Font(family=fam, size=12, weight="bold")
+        self.f_card = tkfont.Font(family=fam, size=11, weight="bold")
+        self.f_label = tkfont.Font(family=fam, size=10)
+        self.f_hint = tkfont.Font(family=fam, size=9)
         try:
             factor = float(self.tk.call("tk", "scaling")) / (96.0 / 72.0)
         except Exception:
             factor = 1.0
         self._sx = lambda px: max(px, int(round(px * factor)))
 
-        # ---- 表单变量（名字与旧版一致，_save 语义不变） ----
+        # ---- 表单变量（名字与 CTk 版一致，_save 输出相同的 patch） ----
+        zcfg = cfg.get("zhipu", {})
+        vcfg = cfg.get("volcano", {})
         self.z_en = tk.BooleanVar(value=bool(zcfg.get("enabled", True)))
-        self.z_key = tk.StringVar(value=zcfg.get("api_key", ""))
-        self.z_base = tk.StringVar(value=zcfg.get("base_url", "open.bigmodel.cn"))
+        self.z_key = tk.StringVar(value=str(zcfg.get("api_key", "")))
+        self.z_base = tk.StringVar(value=str(zcfg.get("base_url", "open.bigmodel.cn")))
         self.z_30d = tk.BooleanVar(value=bool(zcfg.get("show_30d", True)))
         self.z_15d = tk.BooleanVar(value=bool(zcfg.get("show_15d", True)))
         self.z_7d = tk.BooleanVar(value=bool(zcfg.get("show_7d", True)))
         self.v_en = tk.BooleanVar(value=bool(vcfg.get("enabled", True)))
-        self.v_ak = tk.StringVar(value=vcfg.get("access_key_id", ""))
-        self.v_sk = tk.StringVar(value=vcfg.get("secret_access_key", ""))
-        self.v_region = tk.StringVar(value=vcfg.get("region", "cn-beijing"))
+        self.v_ak = tk.StringVar(value=str(vcfg.get("access_key_id", "")))
+        self.v_sk = tk.StringVar(value=str(vcfg.get("secret_access_key", "")))
+        self.v_region = tk.StringVar(value=str(vcfg.get("region", "cn-beijing")))
         theme_val = str(cfg.get("theme", "auto") or "auto")
         if theme_val not in ("auto", "dark", "light"):
             theme_val = "auto"
         self.theme_choice = tk.StringVar(value=theme_val)
         self.edge_dock = tk.BooleanVar(value=bool(cfg.get("edge_dock", True)))
-        self.dock_len = tk.IntVar(
-            value=min(240, max(40, int(cfg.get("dock_len", 150)))))
-        scale_now = float(cfg.get("ui_scale", 1.0))
+        self.dock_len = tk.IntVar(value=_to_int(cfg.get("dock_len", 150), 150, 40, 240))
+        try:
+            scale_now = float(cfg.get("ui_scale", 1.0))
+        except (TypeError, ValueError):
+            scale_now = 1.0
         nearest = min(SCALE_STEPS, key=lambda s: abs(s - scale_now))
-        self.scale_var = tk.StringVar(value=SCALE_SHORT[nearest])
-        self.opacity = tk.IntVar(
-            value=max(60, int(round(float(cfg.get("opacity", 0.96)) * 100))))
-        self.refresh = tk.IntVar(value=max(1, int(cfg.get("refresh_minutes", 5))))
-        self.warn = tk.IntVar(value=int(cfg.get("warn_percent", 80)))
-        self.crit = tk.IntVar(value=int(cfg.get("critical_percent", 95)))
+        self.scale_var = tk.StringVar(value=str(nearest))
+        try:
+            opacity = int(round(float(cfg.get("opacity", 0.96)) * 100))
+        except (TypeError, ValueError):
+            opacity = 96
+        self.opacity = tk.IntVar(value=min(100, max(60, opacity)))
+        self.refresh = tk.IntVar(value=_to_int(cfg.get("refresh_minutes", 5), 5, 1, 120))
+        self.warn = tk.IntVar(value=_to_int(cfg.get("warn_percent", 80), 80, 10, 98))
+        self.crit = tk.IntVar(value=_to_int(cfg.get("critical_percent", 95), 95, 11, 99))
         self.notify_en = tk.BooleanVar(value=bool(cfg.get("notify", True)))
         self.burn_en = tk.BooleanVar(value=bool(cfg.get("burn_predict", False)))
 
-        # ---- 布局：底部按钮固定 + 左侧导航 + 右侧可滚动内容 ----
+        # ---- 布局：底部按钮固定 + 左侧导航 + 右侧可滚动卡片内容 ----
         self._pages = {}
         self._nav = {}
-        self._segs = []
+        self._segs = []             # [(分段标签, 变量, 值)]：点击后重绘选中态
         self._active_page = ""
+        self._thumb_ry = 0
+        self._thumb_f0 = 0.0
 
         self._build_footer()
         body = tk.Frame(self, bg=self.S_BG)
         body.pack(fill="both", expand=True)
-        side = tk.Frame(body, bg=self.S_SIDE, width=self._sx(176))
-        side.pack(side="left", fill="y")
-        side.pack_propagate(False)
+        self._build_sidebar(body)
         main = tk.Frame(body, bg=self.S_BG)
         main.pack(side="left", fill="both", expand=True)
-
         self._scroll = tk.Canvas(main, bg=self.S_BG, highlightthickness=0, bd=0)
         self._scroll.pack(side="left", fill="both", expand=True)
         self._scroll.configure(yscrollincrement=self._sx(20))
@@ -1770,27 +2015,27 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
         self._scroll_item = self._scroll.create_window(
             (0, 0), window=self._host, anchor="nw")
         self._host.bind("<Configure>", self._on_host_configure)
-        self._scroll.bind("<Configure>", self._on_scroll_resize)
-        self._scroll.bind_all("<MouseWheel>", self._on_wheel, add="+")
+        self._scroll.bind("<Configure>", self._on_canvas_configure)
+        self._thumb = tk.Frame(main, bg=self.S_THUMB, bd=0,
+                               highlightthickness=0, cursor="hand2")
+        self._thumb.bind("<Button-1>", self._thumb_drag_start)
+        self._thumb.bind("<B1-Motion>", self._thumb_drag)
+        self._bind_wheel()
 
-        self._build_sidebar(side)
-        self._build_providers_page()
-        self._build_display_page()
-        self._refresh_segs()
         self._show_page("providers")
 
-        # 尺寸：舒适默认高度（约 600 逻辑像素），内容超出时窗口内滚动。
-        # 内容挂在滚动 Canvas 里，Canvas 的自然高度不包含内容，必须手动量页面。
+        # 尺寸：舒适默认尺寸（内容超出时窗口内滚动）。
+        # 内容挂在滚动 Canvas 里，Canvas 的自然高度不包含内容，不必手动量页
         self.update_idletasks()
-        content_h = max(p.winfo_reqheight() for p in self._pages.values())
-        w = max(self._sx(620), self.winfo_reqwidth())
-        h = min(content_h + self._sx(70), self._sx(600),
-                int(self.winfo_screenheight() * 0.88))
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        w = min(max(self._sx(880), self.winfo_reqwidth()), int(sw * 0.94))
+        h = min(self._sx(660), int(sh * 0.9))
         self.geometry("%dx%d+%d+%d" % (
             w, h, max(0, (sw - w) // 2), max(0, (sh - h) // 2)))
         self.resizable(True, True)
-        self.minsize(min(w, self._sx(500)), self._sx(300))
+        # minsize 不得高于按屏幕折算出的默认高度：矮屏 + 高 DPI 缩放下，
+        # 否则窗口会被顶得比屏幕还高，底部「保存并应用」永远够不着
+        self.minsize(min(w, self._sx(760)), min(self._sx(540), h))
         self.update_idletasks()
         apply_immersive_titlebar(widget_hwnd(self), dark=self.is_dark)
         try:
@@ -1799,6 +2044,7 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
             pass  # 个别环境窗口尚未映射时抓取失败，不应中断整个设置窗口
         self.focus_set()
         self.bind("<Escape>", lambda e: self._close())
+        self.protocol("WM_DELETE_WINDOW", self._close)
 
     # ---------------- 通用绘制 ----------------
 
@@ -1829,10 +2075,6 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
                            fill=self.S_SHADOW, outline="", stipple="gray25")
             # 滑块主体
             cv.create_oval(kx, y0, kx + d, y1, fill=self.S_KNOB, outline="")
-            # 滑块高光
-            cv.create_oval(kx + d * 0.25, y0 + d * 0.2,
-                           kx + d * 0.75, y0 + d * 0.55,
-                           fill="", outline=self.S_INPUT_LINE, width=1)
         cv.bind("<Button-1>", lambda e: var.set(not var.get()))
         try:
             var.trace_add("write", lambda *_a: draw())
@@ -1842,7 +2084,7 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
         return cv
 
     def _pill_button(self, parent, text, cmd, primary=False):
-        """圆角按钮：primary 为品牌色主按钮（带高光），否则为幽灵按钮。"""
+        """圆角按钮：primary 为强调色主按钮，否则为灰底次要按钮。"""
         f = self.f_label
         tw = f.measure(text)
         h = self._sx(32)
@@ -1851,17 +2093,13 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
                        highlightthickness=0, cursor="hand2")
         normal = self.S_ACCENT if primary else self.S_INPUT
         hover = self.S_ACCENT_HI if primary else self.S_INPUT_LINE
-        fg = self.S_BTN_TEXT if primary else self.S_TEXT
+        fg = self.S_ON_ACCENT if primary else self.S_TEXT
 
         def draw(bg):
             cv.delete("all")
             r = (h - 2) / 2.0
-            self._rrect(cv, 1, 1, w - 1, h - 1, r, fill=bg)
-            if primary:
-                # 顶部高光带
-                self._rrect(cv, 3, 2, w - 3, h / 2.0, r - 1,
-                            fill="", outline="white", width=1,
-                            stipple="gray25")
+            self._rrect(cv, 1, 1, w - 1, h - 1, r, fill=bg,
+                        outline=self.S_INPUT_LINE if not primary else "")
             cv.create_text(w / 2.0, h / 2.0, text=text, font=f, fill=fg)
         draw(normal)
         cv.bind("<Enter>", lambda e: draw(hover))
@@ -1871,11 +2109,11 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
         return cv
 
     def _mini_btn(self, parent, text, cmd):
-        """圆角小按钮（画布绘制），用于显示/隐藏密钥、自启开关等。
+        """圆角小按钮，用于自启开关等次要操作。
         文字运行期可通过 set_text() 更新（按钮自动加宽重绘）。"""
         f = self.f_hint
         h = self._sx(24)
-        state = {"text": text, "w": f.measure(text) + self._sx(20)}
+        state = {"text": text, "w": f.measure(text) + self._sx(24)}
         cv = tk.Canvas(parent, width=state["w"], height=h, bg=parent.cget("bg"),
                        highlightthickness=0, cursor="hand2")
 
@@ -1890,60 +2128,57 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
 
         def set_text(t):
             state["text"] = t
-            state["w"] = max(state["w"], f.measure(t) + self._sx(20))
+            state["w"] = max(state["w"], f.measure(t) + self._sx(24))
             cv.configure(width=state["w"])
             draw(self.S_INPUT)
 
         cv.set_text = set_text
         draw(self.S_INPUT)
-        cv.bind("<Enter>", lambda e: draw(self.S_SIDE_HI))
+        cv.bind("<Enter>", lambda e: draw(self.S_NAV_HI))
         cv.bind("<Leave>", lambda e: draw(self.S_INPUT))
-        cv.bind("<Button-1>", lambda e: (draw(self.S_SIDE_HI), cmd()))
+        cv.bind("<Button-1>", lambda e: (draw(self.S_NAV_HI), cmd()))
         return cv
 
-    # ---------------- 滚动与关闭 ----------------
+    # ---------------- 骨架：操作栏 / 导航 / 页面 ----------------
 
-    def _on_host_configure(self, _e):
-        self._scroll.configure(scrollregion=self._scroll.bbox("all"))
+    def _build_footer(self):
+        bar = tk.Frame(self, bg=self.S_BG)
+        bar.pack(side="bottom", fill="x")
+        tk.Frame(bar, bg=self.S_LINE, height=1).pack(fill="x")
+        btns = tk.Frame(bar, bg=self.S_BG)
+        btns.pack(fill="x", side="right", padx=self._sx(20),
+                  pady=self._sx(12))
+        self._pill_button(btns, "取消", self._close).pack(side="right")
+        self._pill_button(btns, "保存并应用", self._save,
+                          primary=True).pack(side="right", padx=(0, self._sx(10)))
+        tk.Label(bar, text="ESC 关闭 · 保存后立即生效", bg=self.S_BG,
+                 fg=self.S_HINT, font=self.f_hint).pack(
+            side="left", padx=self._sx(20), pady=self._sx(12))
 
-    def _on_scroll_resize(self, e):
-        self._scroll.itemconfigure(self._scroll_item, width=e.width)
+    def _build_sidebar(self, body):
+        side = tk.Frame(body, bg=self.S_NAV, width=self._sx(186))
+        side.pack(side="left", fill="y")
+        side.pack_propagate(False)
+        head = tk.Frame(side, bg=self.S_NAV)
+        head.pack(fill="x", padx=self._sx(20), pady=(self._sx(24), self._sx(18)))
+        tk.Label(head, text=APP_NAME, bg=self.S_NAV, fg=self.S_TEXT,
+                 font=self.f_brand, anchor="w").pack(fill="x")
+        tk.Label(head, text="v" + APP_VERSION, bg=self.S_NAV, fg=self.S_HINT,
+                 font=self.f_hint, anchor="w").pack(fill="x", pady=(2, 0))
+        for key, label, _sub, hue in SET_PAGES:
+            self._nav_item(side, key, label, hue)
 
-    def _on_wheel(self, e):
-        if not self.winfo_exists():
-            return
-        self._scroll.yview_scroll(int(-e.delta / 120) * 3, "units")
-
-    def _close(self):
-        try:
-            self.unbind_all("<MouseWheel>")
-        except Exception:
-            pass
-        self.destroy()
-
-    # ---------------- 侧栏导航 ----------------
-
-    def _build_sidebar(self, parent):
-        head = tk.Frame(parent, bg=self.S_SIDE)
-        head.pack(fill="x", padx=self._sx(16), pady=(self._sx(18), self._sx(16)))
-        tk.Label(head, text=APP_NAME, bg=self.S_SIDE, fg=self.S_TEXT,
-                 font=self.f_card, anchor="w").pack(fill="x")
-        tk.Label(head, text="v" + APP_VERSION, bg=self.S_SIDE, fg=self.S_DIM,
-                 font=self.f_hint, anchor="w").pack(fill="x")
-        self._nav_item(parent, "providers", "供应商密钥")
-        self._nav_item(parent, "display", "显示与提醒")
-
-    def _nav_item(self, parent, key, text):
-        item = tk.Frame(parent, bg=self.S_SIDE, cursor="hand2")
-        item.pack(fill="x", padx=self._sx(8), pady=self._sx(2))
-        bar = tk.Frame(item, bg=self.S_SIDE, width=3)
-        bar.pack(side="left", fill="y")
-        lbl = tk.Label(item, text=text, bg=self.S_SIDE, fg=self.S_DIM,
+    def _nav_item(self, parent, key, label, hue):
+        item = tk.Frame(parent, bg=self.S_NAV, cursor="hand2")
+        item.pack(fill="x", padx=self._sx(10), pady=self._sx(2))
+        dot = tk.Frame(item, bg=hue, width=self._sx(8), height=self._sx(8))
+        dot.pack(side="left", padx=(self._sx(12), 0))
+        lbl = tk.Label(item, text=label, bg=self.S_NAV, fg=self.S_DIM,
                        font=self.f_label, anchor="w",
-                       padx=self._sx(12), pady=self._sx(9))
+                       padx=self._sx(10), pady=self._sx(9))
         lbl.pack(side="left", fill="x", expand=True)
-        self._nav[key] = {"item": item, "bar": bar, "lbl": lbl}
-        for w in (item, bar, lbl):
+        self._nav[key] = {"item": item, "lbl": lbl, "dot": dot}
+        for w in (item, dot, lbl):
             w.bind("<Button-1>", lambda e, k=key: self._show_page(k))
             w.bind("<Enter>", lambda e, k=key: self._hover_nav(k, True))
             w.bind("<Leave>", lambda e, k=key: self._hover_nav(k, False))
@@ -1952,86 +2187,124 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
         if key == self._active_page:
             return
         st = self._nav[key]
-        bg = self.S_SIDE_HI if on else self.S_SIDE
+        bg = self.S_NAV_HI if on else self.S_NAV
         st["item"].config(bg=bg)
         st["lbl"].config(bg=bg, fg=self.S_TEXT if on else self.S_DIM)
 
     def _show_page(self, key):
-        self._active_page = key
-        for k, page in self._pages.items():
+        """切换功能页：页面懒构建（首次进入才创建，打开窗口更快）。"""
+        if key not in self._pages:
+            self._pages[key] = self._make_page(key)
+        for page in self._pages.values():
             page.pack_forget()
         self._pages[key].pack(fill="both", expand=True)
+        self._active_page = key
         self._scroll.yview_moveto(0.0)
         for k, st in self._nav.items():
             active = (k == key)
-            bg = self.S_ACCENT_SOFT if active else self.S_SIDE
+            bg = self.S_NAV_ACT if active else self.S_NAV
             st["item"].config(bg=bg)
-            st["lbl"].config(bg=bg,
-                             fg=self.S_ACCENT if active else self.S_DIM)
-            st["bar"].config(bg=self.S_ACCENT if active else self.S_SIDE)
+            st["lbl"].config(bg=bg, fg=self.S_TEXT if active else self.S_DIM)
+        self._upd_thumb()
 
-    # ---------------- 页面与卡片 ----------------
-
-    def _new_page(self, key, title, subtitle):
+    def _make_page(self, key):
         page = tk.Frame(self._host, bg=self.S_BG)
-        tk.Label(page, text=title, bg=self.S_BG, fg=self.S_TEXT,
-                 font=self.f_page, anchor="w").pack(
-            fill="x", padx=self._sx(22), pady=(self._sx(22), 0))
-        tk.Label(page, text=subtitle, bg=self.S_BG, fg=self.S_HINT,
-                 font=self.f_hint, anchor="w", justify="left").pack(
-            fill="x", padx=self._sx(22), pady=(4, self._sx(16)))
-        self._pages[key] = page
+        self._page_head(page, key)
+        builders = {
+            "providers": self._page_providers,
+            "refresh": self._page_refresh,
+            "appearance": self._page_appearance,
+            "notify": self._page_notify,
+            "advanced": self._page_advanced,
+        }
+        builders.get(key, self._page_providers)(page)
+        tk.Frame(page, bg=self.S_BG, height=self._sx(16)).pack(fill="x")
         return page
 
-    def _card(self, parent, title=None, accent=None, enable_var=None, desc=None):
-        card = tk.Frame(parent, bg=self.S_CARD)
-        card.pack(fill="x", padx=self._sx(22), pady=(0, self._sx(12)))
-        if title:
-            head = tk.Frame(card, bg=self.S_CARD)
-            head.pack(fill="x", padx=self._sx(18),
-                      pady=(self._sx(16), 0 if desc else self._sx(6)))
-            bar = tk.Frame(head, bg=accent or self.S_ACCENT,
-                           width=3, height=self._sx(14))
-            bar.pack(side="left", fill="y")
-            tk.Label(head, text=title, bg=self.S_CARD, fg=self.S_TEXT,
-                     font=self.f_card).pack(side="left", padx=(self._sx(10), 0))
-            if enable_var is not None:
-                self._switch(head, enable_var).pack(side="right")
-            if desc:
-                tk.Label(card, text=desc, bg=self.S_CARD, fg=self.S_HINT,
-                         font=self.f_hint, anchor="w", justify="left").pack(
-                    fill="x", padx=self._sx(18), pady=(4, self._sx(4)))
+    def _page_head(self, page, key):
+        _key, label, sub, hue = next(p for p in SET_PAGES if p[0] == key)
+        head = tk.Frame(page, bg=self.S_BG)
+        head.pack(fill="x", padx=self._sx(32), pady=(self._sx(26), 0))
+        row = tk.Frame(head, bg=self.S_BG)
+        row.pack(fill="x")
+        tk.Frame(row, bg=hue, width=self._sx(10),
+                 height=self._sx(10)).pack(side="left", padx=(0, self._sx(10)))
+        tk.Label(row, text=label, bg=self.S_BG, fg=self.S_TEXT,
+                 font=self.f_page, anchor="w").pack(side="left")
+        tk.Label(head, text=sub, bg=self.S_BG, fg=self.S_HINT,
+                 font=self.f_hint, anchor="w", justify="left",
+                 wraplength=self._sx(480)).pack(
+            fill="x", pady=(self._sx(4), self._sx(14)))
+
+    # ---------------- 卡片与行 ----------------
+
+    def _card(self, parent, title, dot=None, switch_var=None, desc=None):
+        """一张设置卡片：细边面板 + 彩色圆点标题 + 右上角可选开关。"""
+        card = tk.Frame(parent, bg=self.S_CARD, bd=0,
+                        highlightthickness=1,
+                        highlightbackground=self.S_CARD_LINE)
+        card.pack(fill="x", padx=self._sx(32), pady=(0, self._sx(14)))
+        head = tk.Frame(card, bg=self.S_CARD)
+        head.pack(fill="x", padx=self._sx(20),
+                  pady=(self._sx(16), self._sx(4) if desc else self._sx(10)))
+        inner = tk.Frame(head, bg=self.S_CARD)
+        inner.pack(side="left")
+        if dot:
+            tk.Frame(inner, bg=dot, width=self._sx(9),
+                     height=self._sx(9)).pack(side="left", padx=(0, self._sx(9)))
+        tk.Label(inner, text=title, bg=self.S_CARD, fg=self.S_TEXT,
+                 font=self.f_card).pack(side="left")
+        if switch_var is not None:
+            self._switch(head, switch_var).pack(side="right")
+        if desc:
+            tk.Label(card, text=desc, bg=self.S_CARD, fg=self.S_HINT,
+                     font=self.f_hint, anchor="w", justify="left",
+                     wraplength=self._sx(480)).pack(
+                fill="x", padx=self._sx(20), pady=(0, self._sx(10)))
         return card
 
-    # ---------------- 行构造辅助 ----------------
+    def _divider(self, card):
+        """行间发丝分隔线（卡片第一行与卡片头之间也有一条）。"""
+        tk.Frame(card, bg=self.S_LINE, height=1).pack(
+            fill="x", padx=self._sx(20))
 
-    def _setting_row(self, card, title, desc=None, bottom=12):
+    def _row(self, card, title, desc=None):
         """设置行：标题(+说明)在左，控件容器在右。"""
+        self._divider(card)
         row = tk.Frame(card, bg=self.S_CARD)
-        row.pack(fill="x", padx=self._sx(18),
-                 pady=(self._sx(6), self._sx(bottom)))
+        row.pack(fill="x", padx=self._sx(20), pady=self._sx(9))
+        # 先排右侧控件再排左侧文字：空间不足时 pack 挤压后入者，
+        # 这样被压缩的是说明文字的宽度，而不是整列控件
+        right = tk.Frame(row, bg=self.S_CARD)
+        right.pack(side="right", padx=(self._sx(12), 0))
         left = tk.Frame(row, bg=self.S_CARD)
         left.pack(side="left", fill="x", expand=True)
         tk.Label(left, text=title, bg=self.S_CARD, fg=self.S_TEXT,
                  font=self.f_label, anchor="w", justify="left").pack(anchor="w")
         if desc:
-            tk.Label(left, text=desc, bg=self.S_CARD, fg=self.S_HINT,
-                     font=self.f_hint, anchor="w", justify="left",
-                     wraplength=self._sx(300)).pack(anchor="w", pady=(1, 0))
-        right = tk.Frame(row, bg=self.S_CARD)
-        right.pack(side="right", padx=(self._sx(12), 0))
+            dlab = tk.Label(left, text=desc, bg=self.S_CARD, fg=self.S_HINT,
+                            font=self.f_hint, anchor="w", justify="left",
+                            wraplength=self._sx(300))
+            dlab.pack(anchor="w", pady=(2, 0))
+            # 说明换行宽度跟随可用空间收缩，保证窄窗口下仍让右侧控件完整可见
+            def _fit(ev, _d=dlab, _min=self._sx(120), _max=self._sx(300)):
+                wl = int(max(_min, min(_max, ev.width - self._sx(16))))
+                if _d.cget("wraplength") != wl:
+                    _d.configure(wraplength=wl)
+            left.bind("<Configure>", _fit)
         return right
 
-    def _field(self, card, label, var, hint=None, secret=False, bottom=8):
-        """供应商密钥等表单行：标签列 + 圆角输入框（聚焦时强调色描边）。"""
+    def _field(self, card, label, var, hint=None, secret=False):
+        """表单字段行：标签列 + 圆角输入框（聚焦时强调色描边）。"""
+        self._divider(card)
         wrap = tk.Frame(card, bg=self.S_CARD)
-        wrap.pack(fill="x", padx=self._sx(18), pady=(0, self._sx(bottom)))
+        wrap.pack(fill="x", padx=self._sx(20), pady=(self._sx(10), self._sx(12)))
         row = tk.Frame(wrap, bg=self.S_CARD)
         row.pack(fill="x")
         tk.Label(row, text=label, bg=self.S_CARD, fg=self.S_DIM,
-                 font=self.f_label, width=13, anchor="w").pack(side="left")
+                 font=self.f_hint, width=16, anchor="w").pack(side="left")
 
-        radius = self._sx(6)
+        radius = self._sx(8)
         box = tk.Frame(row, bg=self.S_CARD)
         box.pack(side="left", fill="x", expand=True, padx=(4, 0))
         cv = tk.Canvas(box, bg=self.S_CARD, highlightthickness=0, bd=0)
@@ -2060,7 +2333,11 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
         e.bind("<FocusOut>", lambda ev: _draw(False))
         box.bind("<Configure>", lambda ev: _draw())
         _draw()  # 同步画一次：让画布拿到正确高度，供窗口自然尺寸测量
-        cv.after(10, _draw)  # 布局稳定后再校准一次宽度
+
+        def _draw_later():
+            if cv.winfo_exists():  # 窗口秒关时避免对已销毁控件回调
+                _draw()
+        cv.after(10, _draw_later)  # 布局稳定后再校准一次宽度
 
         if secret:
             def _toggle():
@@ -2074,14 +2351,53 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
             btn.pack(side="left", padx=(6, 0))
         if hint:
             tk.Label(wrap, text=hint, bg=self.S_CARD, fg=self.S_HINT,
-                     font=self.f_hint, anchor="w").pack(fill="x", pady=(3, 0))
+                     font=self.f_hint, anchor="w").pack(
+                fill="x", pady=(self._sx(4), 0))
         return e
+
+    def _checks(self, card, items, title=None):
+        """复选框行（智谱近 N 天用量开关）。"""
+        self._divider(card)
+        row = tk.Frame(card, bg=self.S_CARD)
+        row.pack(fill="x", padx=self._sx(20), pady=(self._sx(8), self._sx(12)))
+        if title:
+            tk.Label(row, text=title, bg=self.S_CARD, fg=self.S_TEXT,
+                     font=self.f_label).pack(side="left", padx=(0, self._sx(14)))
+        for text, var in items:
+            self._check(row, text, var).pack(side="left",
+                                             padx=(0, self._sx(16)))
+
+    def _info(self, card, title, value):
+        """只读信息行：左标题，右说明。"""
+        self._divider(card)
+        row = tk.Frame(card, bg=self.S_CARD)
+        row.pack(fill="x", padx=self._sx(20), pady=self._sx(9))
+        tk.Label(row, text=title, bg=self.S_CARD, fg=self.S_TEXT,
+                 font=self.f_label, anchor="w").pack(side="left")
+        tk.Label(row, text=value, bg=self.S_CARD, fg=self.S_DIM,
+                 font=self.f_hint, anchor="w", justify="left",
+                 wraplength=self._sx(340)).pack(
+            side="left", padx=(self._sx(12), 0), fill="x", expand=True)
+
+    def _buttons_row(self, card, specs):
+        """按钮行：specs = [(文字, 回调, 是否主按钮), ...]，回调为 None 则跳过。"""
+        self._divider(card)
+        row = tk.Frame(card, bg=self.S_CARD)
+        row.pack(fill="x", padx=self._sx(20), pady=(self._sx(10), self._sx(14)))
+        for text, cmd, primary in specs:
+            if cmd is None:
+                continue
+            self._pill_button(row, text, cmd,
+                              primary=primary).pack(side="left",
+                                                    padx=(0, self._sx(8)))
+
+    # ---------------- 控件：步进器 / 分段选择器 ----------------
 
     def _row_stepper(self, right, var, lo, hi, step=1, unit=""):
         """圆角步进器：左右加减按钮 + 中间数值，整体胶囊外形。"""
         ctl = tk.Frame(right, bg=self.S_CARD)
-        ctl.pack()
-        radius = self._sx(6)
+        ctl.pack(side="left")  # 与后面的单位标签同行
+        radius = self._sx(8)
         cv = tk.Canvas(ctl, bg=self.S_CARD, highlightthickness=0, bd=0)
         cv.pack()
 
@@ -2094,7 +2410,7 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
 
         def _click(d):
             try:
-                v = int(var.get()) + d
+                v = int(float(var.get())) + d
             except Exception:
                 v = lo
             var.set(min(hi, max(lo, v)))
@@ -2125,135 +2441,265 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
             cv.coords(wv, mw, 0)
             cv.coords(wp, mw + vw, 0)
         _draw()  # 同步画一次，保证窗口自然尺寸测量准确
-        cv.after(10, _draw)
+
+        def _draw_later():
+            if cv.winfo_exists():  # 窗口秒关时避免对已销毁控件回调
+                _draw()
+        cv.after(10, _draw_later)
 
         if unit:
             tk.Label(right, text=unit, bg=self.S_CARD, fg=self.S_HINT,
                      font=self.f_hint).pack(side="left", padx=(6, 0))
 
-    def _row_segmented(self, right, options, var):
-        """分段选择器：选中项用强调色，未选中为灰底。"""
+    def _pill_select(self, right, options, var):
+        """分段选择器：选中项用强调色药丸，未选中为灰底。"""
         track = tk.Frame(right, bg=self.S_INPUT_LINE)
-        track.pack(pady=1)
+        track.pack(padx=1, pady=1)
         for text, value in options:
             seg = tk.Label(track, text=text, bg=self.S_INPUT, fg=self.S_DIM,
-                           font=self.f_hint, padx=self._sx(9),
+                           font=self.f_hint, padx=self._sx(10),
                            pady=self._sx(5), cursor="hand2")
             seg.pack(side="left", padx=1, pady=1)
             seg.bind("<Button-1>",
-                     lambda e, v=value: (var.set(v), self._refresh_segs()))
+                     lambda e, v=value: self._pick_pill(var, v))
             seg.bind("<Enter>",
-                     lambda e, s=seg: s.config(fg=self.S_TEXT))
+                     lambda e, s=seg, v=value: s.config(
+                         fg=self.S_TEXT if str(var.get()) != str(v)
+                         else self.S_ON_ACCENT))
             seg.bind("<Leave>",
                      lambda e, s=seg, v=value: s.config(
-                         fg=self.S_TEXT if str(var.get()) == str(v)
+                         fg=self.S_ON_ACCENT if str(var.get()) == str(v)
                          else self.S_DIM))
             self._segs.append((seg, var, value))
+        self._refresh_segs()
+        return track
+
+    def _pick_pill(self, var, value):
+        var.set(value)
+        self._refresh_segs()
 
     def _refresh_segs(self):
         for seg, var, value in self._segs:
             active = (str(var.get()) == str(value))
             seg.config(bg=self.S_ACCENT if active else self.S_INPUT,
-                       fg=self.S_BTN_TEXT if active else self.S_DIM)
+                       fg=self.S_ON_ACCENT if active else self.S_DIM)
 
     def _check(self, parent, text, var):
         bg = parent.cget("bg")
         return tk.Checkbutton(parent, text=text, variable=var, bg=bg,
-                              fg=self.S_TEXT, activebackground=bg,
+                              fg=self.S_DIM, activebackground=bg,
                               activeforeground=self.S_TEXT,
-                              selectcolor=self.S_INPUT, font=self.f_label,
+                              selectcolor=self.S_INPUT, font=self.f_hint,
                               anchor="w", cursor="hand2", bd=0,
                               highlightthickness=0)
 
-    # ---------------- 两个页面 ----------------
+    # ---------------- 滚动 ----------------
 
-    def _build_providers_page(self):
-        page = self._new_page("providers", "供应商密钥",
-                              "密钥只保存在 %APPDATA%\\LLM Usage Widget\\config.json，不经过任何第三方服务器")
-        card = self._card(page, "智谱 Coding Plan", C_ACCENT_Z, self.z_en)
+    def _bind_wheel(self):
+        # 滚轮滚动内容区。窗口是模态（grab_set），事件只会进入本窗口；
+        # 关闭时统一解绑，不污染全局
+        self.bind_all("<MouseWheel>", self._on_wheel, add="+")
+        for seq in ("<Button-4>", "<Button-5>"):  # Linux/X11 滚轮
+            self.bind_all(seq, self._on_wheel, add="+")
+
+    def _on_wheel(self, e):
+        if not self.winfo_exists():
+            return
+        num = getattr(e, "num", 0)
+        if num == 4:
+            step = -3
+        elif num == 5:
+            step = 3
+        else:
+            try:
+                step = int(-e.delta / 120) * 3
+            except Exception:
+                step = 0
+        if step:
+            self._scroll.yview_scroll(step, "units")
+            self._upd_thumb()
+
+    def _on_host_configure(self, _e):
+        self._scroll.configure(scrollregion=self._scroll.bbox("all"))
+        self._upd_thumb()
+
+    def _on_canvas_configure(self, e):
+        self._scroll.itemconfigure(self._scroll_item, width=e.width)
+        self._upd_thumb()
+
+    def _upd_thumb(self):
+        """滚动指示条：内容超出可视区时悬浮在右缘，装得下就隐藏。"""
+        try:
+            cv = self._scroll
+            total = max(1, self._host.winfo_reqheight())
+            view = cv.winfo_height()
+            if view < 10 or total <= view + 2:
+                self._thumb.place_forget()
+                return
+            f0, f1 = cv.yview()
+            th = max(self._sx(40), int(view * (f1 - f0)))
+            y = int(f0 * view)
+            if self._thumb.winfo_ismapped():
+                self._thumb.place_configure(y=y, height=th)
+            else:
+                self._thumb.place(in_=cv, relx=1.0, x=-self._sx(12), rely=0.0,
+                                  y=y, width=self._sx(6), height=th)
+        except Exception:
+            pass
+
+    def _thumb_drag_start(self, e):
+        self._thumb_ry = e.y_root
+        self._thumb_f0 = self._scroll.yview()[0]
+
+    def _thumb_drag(self, e):
+        view = max(1, self._scroll.winfo_height())
+        f = min(1.0, max(0.0, self._thumb_f0 + (e.y_root - self._thumb_ry) / view))
+        self._scroll.yview_moveto(f)
+        self._upd_thumb()
+
+    # ---------------- 五个功能页 ----------------
+
+    def _page_providers(self, page):
+        card = self._card(page, "智谱 GLM Coding Plan", C_ACCENT_Z, self.z_en,
+                          desc="GLM Coding Plan 套餐额度，含 5 小时 / 本周 / MCP 每月窗口")
         self._field(card, "API Key", self.z_key, secret=True,
-                    hint="智谱开放平台 → API Keys 页面")
+                    hint="智谱开放平台 → API Keys 页面获取")
         self._field(card, "接口地址", self.z_base,
-                    hint="国际版填 api.z.ai，一般不用改")
-        row = tk.Frame(card, bg=self.S_CARD)
-        row.pack(fill="x", padx=self._sx(18), pady=(0, self._sx(14)))
-        for text, var in (("近 30 天用量", self.z_30d),
-                          ("近 15 天用量", self.z_15d),
-                          ("近 7 天用量", self.z_7d)):
-            self._check(row, text, var).pack(side="left",
-                                              padx=(0, self._sx(12)))
-        card = self._card(page, "火山引擎 Agent Plan", C_ACCENT_V, self.v_en)
+                    hint="国际版（z.ai）填 api.z.ai，一般不用改")
+        self._checks(card, (("近 30 天", self.z_30d), ("近 15 天", self.z_15d),
+                            ("近 7 天", self.z_7d)),
+                     title="详情面板历史用量")
+
+        card = self._card(page, "火山引擎 Agent Plan", C_ACCENT_V, self.v_en,
+                          desc="账号级访问密钥（AK/SK），含 5 小时 / 本周 / 本月窗口")
         self._field(card, "AccessKey ID", self.v_ak,
-                    hint="控制台 → API 访问密钥（AKLT 开头）")
+                    hint="控制台 → 右上角头像 → API 访问密钥（AKLT 开头）")
         self._field(card, "SecretAccessKey", self.v_sk, secret=True,
-                    hint="账号级密钥，非方舟模型 Key")
-        self._field(card, "地域", self.v_region,
-                    hint="一般是 cn-beijing", bottom=14)
+                    hint="账号级密钥，不是方舟里的模型 API Key")
+        self._field(card, "地域", self.v_region, hint="一般保持 cn-beijing")
 
-    def _build_display_page(self):
-        page = self._new_page("display", "显示与提醒",
-                              "外观与刷新行为，保存后立即生效")
-        card = self._card(page, "外观")
-        right = self._setting_row(card, "配色主题",
-                                  "自动模式会感应窗口背后的背景明暗")
-        self._row_segmented(right, (("自动", "auto"), ("深色", "dark"),
-                                    ("浅色", "light")), self.theme_choice)
-        right = self._setting_row(card, "界面缩放",
-                                  "觉得悬浮窗太大/太小就调这里")
-        self._row_segmented(right, tuple((SCALE_SHORT[s], SCALE_SHORT[s])
-                                         for s in SCALE_STEPS), self.scale_var)
-        right = self._setting_row(card, "窗口透明度", "60% ～ 100%")
-        self._row_stepper(right, self.opacity, 60, 100, 1, "%")
-        right = self._setting_row(card, "贴边收起",
-                                  "拖到屏幕边缘自动收起，留进度小条，鼠标移上去弹出",
-                                  bottom=14)
-        self._switch(right, self.edge_dock)
+        tk.Label(page, text="密钥只保存在本机 config.json，不经过任何第三方服务器；"
+                            "不需要的供应商可在卡片右上角关闭，悬浮窗即隐藏该卡片。",
+                 bg=self.S_BG, fg=self.S_HINT, font=self.f_hint, anchor="w",
+                 justify="left", wraplength=self._sx(480)).pack(
+            fill="x", padx=self._sx(32), pady=(2, 10))
 
-        card = self._card(page, "行为")
-        right = self._setting_row(card, "长条长度",
-                                  "贴边收起小条的长度（40 ～ 240px）")
-        self._row_stepper(right, self.dock_len, 40, 240, 10, "px")
-        right = self._setting_row(card, "自动刷新间隔", None)
+    def _page_refresh(self, page):
+        card = self._card(page, "数据刷新", "#45c1a5",
+                          desc="两家供应商每次并行拉取，互不等待")
+        right = self._row(card, "自动刷新间隔",
+                          "手动编辑 config.json 后，右键「立即刷新」马上生效")
         self._row_stepper(right, self.refresh, 1, 120, 1, "分钟")
-        right = self._setting_row(card, "黄色提醒阈值", None)
+
+        card = self._card(page, "烧速预测", "#45c1a5", self.burn_en,
+                          desc="按近期用量外推 5 小时 / 本周窗口何时用尽，"
+                               "提前预警「撑不到重置」，默认关闭")
+        self._info(card, "数据来源", "本地 history.jsonl，每次刷新追加一条快照，保留 14 天")
+        self._info(card, "显示条件", "至少 4 个样本、跨度约 20 分钟以上；数据不足时保持安静")
+
+        card = self._card(page, "网络请求", "#45c1a5")
+        self._info(card, "超时与重试", "单次超时 20 秒；直连与系统代理两路都失败后自动重试一轮")
+        self._info(card, "密钥传输", "请求直接发往供应商官方 API，密钥不经过任何第三方")
+
+    def _page_appearance(self, page):
+        card = self._card(page, "配色主题", "#a88fff")
+        right = self._row(card, "配色主题",
+                          "自动模式感应悬浮窗背后的背景明暗；设置窗口跟随当前生效的主题")
+        self._pill_select(right, (("自动", "auto"), ("深色", "dark"),
+                                  ("浅色", "light")), self.theme_choice)
+
+        card = self._card(page, "界面尺寸", "#a88fff")
+        right = self._row(card, "界面缩放",
+                          "觉得悬浮窗太大或太小就调这里，保存后立即生效")
+        self._pill_select(right, tuple((SCALE_SHORT[s], str(s))
+                                       for s in SCALE_STEPS), self.scale_var)
+        right = self._row(card, "窗口透明度", "60% ～ 100%，建议 80% 以上")
+        self._row_stepper(right, self.opacity, 60, 100, 1, "%")
+
+        card = self._card(page, "贴边收起", "#a88fff")
+        right = self._row(card, "贴边收起",
+                          "拖到屏幕边缘自动收起，只留进度小条，鼠标移上去弹出")
+        self._switch(right, self.edge_dock).pack()  # 手绘开关必须显式排布
+        right = self._row(card, "长条长度", "收起后小条的长度（40 ～ 240px）")
+        self._row_stepper(right, self.dock_len, 40, 240, 10, "px")
+
+    def _page_notify(self, page):
+        card = self._card(page, "预警阈值", "#f0b34e",
+                          desc="进度条、百分比与详情面板按当前档位变色")
+        right = self._row(card, "黄色提醒阈值", "用量超过黄档时变黄")
         self._row_stepper(right, self.warn, 10, 98, 1, "%")
-        right = self._setting_row(card, "红色临界阈值", None)
+        right = self._row(card, "红色临界阈值",
+                          "超过红档变红；保存时自动保证黄档低于红档")
         self._row_stepper(right, self.crit, 11, 99, 1, "%")
-        right = self._setting_row(card, "系统通知",
-                                  "跨阈值 / 临近重置时弹 Windows 通知")
-        self._switch(right, self.notify_en)
-        right = self._setting_row(card, "烧速预测",
-                                  "按近期用量外推何时用尽；默认关闭，记录本地历史",
-                                  bottom=14)
-        self._switch(right, self.burn_en)
+        right = self._row(card, "颜色示意")
+        for color, label in ((C_GREEN, "正常"), (C_YELLOW, "偏高"), (C_RED, "临界")):
+            tk.Label(right, text=" " + label + " ", bg=color, fg="#171a20",
+                     font=self.f_hint, padx=self._sx(8),
+                     pady=self._sx(3)).pack(side="left", padx=(0, self._sx(6)))
 
-        card = self._card(page, "开机自启",
-                          desc="登录 Windows 后自动启动悬浮窗")
-        row = tk.Frame(card, bg=self.S_CARD)
-        row.pack(fill="x", padx=self._sx(18), pady=(self._sx(6), self._sx(14)))
-        self._mini_btn(row, "设置自启", self.on_autostart[0]).pack(side="left")
-        self._mini_btn(row, "取消自启", self.on_autostart[1]).pack(
-            side="left", padx=(8, 0))
+        card = self._card(page, "系统通知", "#f0b34e", self.notify_en,
+                          desc="跨阈值或临近重置时弹 Windows 通知，每个窗口期只提醒一次")
+        self._info(card, "提醒时机",
+                   "跨黄/红阈值 · 临近重置（约 20 分钟内且用量偏高）· 烧速撑不到重置")
 
-    # ---------------- 底部按钮 ----------------
+    def _page_advanced(self, page):
+        card = self._card(page, "开机自启", "#9aa3ad",
+                          desc="登录 Windows 后自动启动悬浮窗，右键菜单里也可以设置")
+        self._buttons_row(card, (("设置自启", self.on_autostart[0], False),
+                                 ("取消自启", self.on_autostart[1], False)))
 
-    def _build_footer(self):
-        bar = tk.Frame(self, bg=self.S_BG)
-        bar.pack(side="bottom", fill="x")
-        tk.Frame(bar, bg=self.S_LINE, height=1).pack(fill="x")
-        btns = tk.Frame(bar, bg=self.S_BG)
-        btns.pack(fill="x", side="right", padx=self._sx(18),
-                  pady=self._sx(12))
-        self._pill_button(btns, "取消", self._close).pack(side="right")
-        self._pill_button(btns, "保存并应用", self._save,
-                          primary=True).pack(side="right", padx=(0, self._sx(10)))
+        card = self._card(page, "应用", "#9aa3ad")
+        self._info(card, "当前版本", "v" + APP_VERSION + "（支持应用内增量更新）")
+        if self.on_update:
+            self._buttons_row(card, (("检查更新", self.on_update, True),))
+
+        card = self._card(page, "数据文件", "#9aa3ad",
+                          desc="配置与用量历史都是本机明文文件，升级、重装都不会丢失")
+        self._info(card, "配置文件", config_path())
+        self._buttons_row(card, (("打开配置文件夹", self._open_config_dir, False),))
+
+    def _open_config_dir(self):
+        path = data_dir()
+        try:
+            if hasattr(os, "startfile"):        # Windows 资源管理器
+                os.startfile(path)  # noqa: S606
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", path])
+        except Exception:
+            pass
+
+    # ---------------- 滚动与关闭 ----------------
+
+    def _close(self):
+        try:
+            self.unbind_all("<MouseWheel>")
+            self.unbind_all("<Button-4>")
+            self.unbind_all("<Button-5>")
+        except Exception:
+            pass
+        cb, self.on_close = self.on_close, None
+        if cb:
+            try:
+                cb()
+            except Exception:
+                pass
+        self.destroy()
 
     # ---------------- 保存 ----------------
 
     def _save(self):
-        label2scale = {v: k for k, v in SCALE_SHORT.items()}
-        warn = min(98, max(10, int(self.warn.get())))
-        crit = min(99, max(11, int(self.crit.get())))
+        try:
+            scale = float(self.scale_var.get())
+        except (TypeError, ValueError):
+            scale = 1.0
+        if scale not in SCALE_STEPS:      # 脏值收敛到最近的合法档位
+            scale = min(SCALE_STEPS, key=lambda s: abs(s - scale))
+        theme = self.theme_choice.get()
+        if theme not in ("auto", "dark", "light"):
+            theme = "auto"
+        warn = min(98, max(10, _to_int(self.warn.get(), 80)))
+        crit = min(99, max(11, _to_int(self.crit.get(), 95)))
         if warn >= crit:  # 保证黄 < 红
             warn, crit = crit - 1, crit
         patch = {
@@ -2271,12 +2717,12 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
                 "secret_access_key": self.v_sk.get().strip(),
                 "region": self.v_region.get().strip() or "cn-beijing",
             },
-            "theme": self.theme_choice.get() or "auto",
+            "theme": theme,
             "edge_dock": bool(self.edge_dock.get()),
-            "dock_len": min(240, max(40, int(self.dock_len.get()))),
-            "ui_scale": label2scale.get(self.scale_var.get(), 1.0),
-            "opacity": min(1.0, max(0.6, int(self.opacity.get()) / 100.0)),
-            "refresh_minutes": min(120, max(1, int(self.refresh.get()))),
+            "dock_len": min(240, max(40, _to_int(self.dock_len.get(), 150))),
+            "ui_scale": scale,
+            "opacity": min(1.0, max(0.6, _to_int(self.opacity.get(), 96) / 100.0)),
+            "refresh_minutes": min(120, max(1, _to_int(self.refresh.get(), 5))),
             "warn_percent": warn,
             "critical_percent": crit,
             "notify": bool(self.notify_en.get()),
@@ -2284,7 +2730,6 @@ class SettingsDialog(tk.Toplevel if TK_AVAILABLE else object):
         }
         self._close()
         self.on_apply(patch)
-
 
 # --------------------------------------------------------------------------
 # 悬浮窗主程序
@@ -3013,7 +3458,9 @@ class UsageWidget:
         self._settings_open = dialog_cls(
             self.root, self.cfg, self.apply_settings,
             (self.enable_autostart, self.disable_autostart),
-            skin=self.theme_eff)
+            skin=self.theme_eff,
+            on_update=self._manual_update_check,   # 高级页「检查更新」按钮
+            on_close=lambda: setattr(self, "_settings_open", None))
 
     def apply_settings(self, patch):
         save_config_patch(patch)             # 增量写盘
