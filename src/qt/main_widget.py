@@ -5,8 +5,8 @@
 - 无边框 + 常驻置顶（FramelessWindowHint + WindowStaysOnTopHint + 置顶守护）
 - WA_TranslucentBackground 实现真圆角（替代 v2 的透明色 chroma key）
 - 贴边收起/悬停展开：QPropertyAnimation（位移 + 透明度并行）
-- 收起态为胶囊把手（状态圆点 + 额度百分比 + chevron）：悬停 200ms 防误触
-  展开、提亮微放大（Property 动画）、可拖去四边换边
+- 收起态为细长胶囊把手，内嵌各供应商微型进度条（v2 经典样式）：
+  悬停 200ms 防误触展开、微放大（Property 动画）、可拖去四边换边
 - 拖动、边缘检测、位置记忆与越界复位、深浅主题（自动=背景亮度采样）
 - 刷新链：工作线程并行拉取两家供应商，信号回主线程应用
 - 阈值/烧速系统通知（core.notify）、本地历史（core.burn_predict）
@@ -47,21 +47,20 @@ def _f(v, default):
 DOCK_ALPHA = 0.85
 HOVER_DELAY_MS = 200     # 悬停防误触延迟：到点才展开完整面板
 HOVER_SCALE = 1.05
-FX_MS = 160              # 悬停进/出动效时长（透明度/缩放/箭头）
+FX_MS = 160              # 悬停进/出动效时长（透明度/缩放）
 
 
 class _HandleFx(QObject):
     """收起把手悬停动效的动画载体（PySide6 Property）。
 
     QPropertyAnimation 只认 Qt 元对象属性，QWidget.setProperty 的动态
-    属性对动画系统不可见，所以把微放大 scale 与 chevron 旋转进度 chev
-    放在这个独立 QObject 上，值变化发 changed 信号让把手重绘。"""
+    属性对动画系统不可见，所以把微放大 scale 放在这个独立 QObject 上，
+    值变化发 changed 信号让把手重绘。"""
     changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._scale = 1.0
-        self._chev = 0.0
 
     def _get_scale(self):
         return self._scale
@@ -77,24 +76,9 @@ class _HandleFx(QObject):
 
     scale = Property(float, _get_scale, _set_scale, notify=changed)
 
-    def _get_chev(self):
-        return self._chev
-
-    def _set_chev(self, v):
-        try:
-            v = max(0.0, min(1.0, float(v)))
-        except (TypeError, ValueError):
-            return
-        if abs(v - self._chev) > 1e-4:
-            self._chev = v
-            self.changed.emit()
-
-    chev = Property(float, _get_chev, _set_chev, notify=changed)
-
-    def set_values(self, scale, chev):
+    def set_values(self, scale):
         """无动画兜底：直接落到目标值。"""
         self._set_scale(scale)
-        self._set_chev(chev)
 
 
 # ---------------- 屏幕可见性判定（启动防呆 / 托盘一键找回共用） ----------------
@@ -183,7 +167,7 @@ class UsageWidget(QWidget):
         self._handle_hover = False
         self._fx = _HandleFx(self)
         self._fx.changed.connect(self._on_fx_changed)
-        self._fx_anim = None    # 微放大 + chevron 并行动画
+        self._fx_anim = None    # 悬停微放大动画
         self._alpha_anim = None # 悬停透明度过渡动画
         # ---- 详情面板倒计时刷新 ----
         self._detail_tick = None
@@ -282,7 +266,6 @@ class UsageWidget(QWidget):
             "text": mk(9),
             "small": mk(7),
             "pct": mk(11, True),
-            "handle": mk(8, True),   # 收起把手的百分比小字
         }
 
     # ---------------- 窗口 ----------------
@@ -360,20 +343,16 @@ class UsageWidget(QWidget):
                             APP_VERSION, self.font_family)
 
     def _paint_dock_handle(self, p):
-        """收起把手（胶囊）：状态圆点 + 百分比 + chevron，随悬停动效重绘。"""
+        """收起把手（v2 经典样式）：细长胶囊内嵌各供应商微型进度条，
+        随悬停微放大重绘。"""
         side = (self.dock_side
                 if self.dock_side in ("left", "right", "top", "bottom")
                 else "left")   # 脏配置兜底
         hw, hl = self._handle_size()   # 注意：这是 (宽, 高)，随边向换轴
         thick = hw if side in ("left", "right") else hl
-        color, pct = dp.handle_status(self.data, self.cfg, self.t)
         dp.paint_handle(
             p, self.width(), self.height(), side, thick, self._handle_margin(),
-            self.k, self.t, self.cfg,
-            scale=self._fx.scale, chev_deg=self._fx.chev,
-            hover=self._handle_hover, dot_color=color,
-            pct_text=None if pct is None else "%d%%" % int(round(pct)),
-            font=self.fonts.get("handle"))
+            self.k, self.t, self.cfg, self.data, scale=self._fx.scale)
 
     # ---------------- 右键菜单 ----------------
 
@@ -667,14 +646,14 @@ class UsageWidget(QWidget):
         if restore:
             self._restore_alpha()
 
-    # ---------------- 把手悬停动效（提亮 + 微放大 + chevron 转向） ----------------
+    # ---------------- 把手悬停动效（提亮 + 微放大） ----------------
 
     def _on_fx_changed(self):
         if self.dock_state == "docked":
             self.update()
 
     def _handle_set_hover(self, on):
-        """把手悬停态切换：透明度 85%↔100% + 微放大 1.05 + chevron 旋转 90°。"""
+        """把手悬停态切换：透明度 85%↔100% + 微放大 1.05。"""
         on = bool(on)
         if self._handle_hover == on:
             return
@@ -716,7 +695,7 @@ class UsageWidget(QWidget):
                 done()
 
     def _start_fx_anim(self, on):
-        """悬停进/出动效：scale 1.0↔1.05 与 chevron 0↔90° 并行（缓出）。"""
+        """悬停进/出动效：scale 1.0↔1.05（缓出）。"""
         if self._fx_anim is not None:
             try:
                 self._fx_anim.stop()
@@ -725,24 +704,16 @@ class UsageWidget(QWidget):
                 pass
             self._fx_anim = None
         try:
-            group = QParallelAnimationGroup(self)
-            s = QPropertyAnimation(self._fx, b"scale")
-            s.setDuration(FX_MS)
-            s.setStartValue(self._fx.scale)
-            s.setEndValue(HOVER_SCALE if on else 1.0)
-            s.setEasingCurve(QEasingCurve.OutCubic)
-            c = QPropertyAnimation(self._fx, b"chev")
-            c.setDuration(FX_MS)
-            c.setStartValue(self._fx.chev)
-            c.setEndValue(1.0 if on else 0.0)
-            c.setEasingCurve(QEasingCurve.OutCubic)
-            group.addAnimation(s)
-            group.addAnimation(c)
-            group.start()
-            self._fx_anim = group
+            anim = QPropertyAnimation(self._fx, b"scale")
+            anim.setDuration(FX_MS)
+            anim.setStartValue(self._fx.scale)
+            anim.setEndValue(HOVER_SCALE if on else 1.0)
+            anim.setEasingCurve(QEasingCurve.OutCubic)
+            anim.start()
+            self._fx_anim = anim
         except Exception:
             # 动效失败不影响功能：直接落到目标值
-            self._fx.set_values(HOVER_SCALE if on else 1.0, 1.0 if on else 0.0)
+            self._fx.set_values(HOVER_SCALE if on else 1.0)
 
     def _handle_fx_reset(self):
         """离开收起态：悬停标志/动效动画/属性值全部复位。"""
@@ -757,7 +728,7 @@ class UsageWidget(QWidget):
                 except Exception:
                     pass
                 setattr(self, attr, None)
-        self._fx.set_values(1.0, 0.0)
+        self._fx.set_values(1.0)
 
     def _hover_expand(self):
         """悬停防误触计时到点：指针仍在把手上才展开完整面板。"""
@@ -903,14 +874,13 @@ class UsageWidget(QWidget):
         k = self.k
         side = self.dock_side
         sw, sh = self._screen_size()
-        thick = max(22, int(30 * k))   # 胶囊厚度（贴边露出的宽度）
+        thick = max(7, int(12 * k))   # 露出厚度（与 v2 把手一致）
         # 长度：设置「把手长度」可调（逻辑像素，随缩放走），默认 150，限 40~240
         dock_len = _f(self.cfg.get("dock_len", 150), 150.0)
         grip = int(min(240.0, max(40.0, dock_len)) * k)
-        grip = max(int(48 * k), grip)  # 再短也要放得下 圆点 + 百分比 + 箭头
         if side in ("left", "right"):
-            return thick, max(int(48 * k), min(grip, sh - 4))
-        return max(int(48 * k), min(grip, sw - 4)), thick
+            return thick, max(thick * 4, min(grip, sh - 4))
+        return max(thick * 4, min(grip, sw - 4)), thick
 
     def _handle_margin(self):
         """把手窗外圈透明余量：悬停 1.05 微放大时胶囊鼓出的出血位。"""
