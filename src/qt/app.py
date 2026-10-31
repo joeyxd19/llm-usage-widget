@@ -137,7 +137,11 @@ def main():
     # 启动防呆：窗口记忆位置丢失时先复位（QApplication 已建，屏幕列表可用）
     pos_reset = validate_startup_pos()
     widget = UsageWidget(pos_reset=pos_reset)
+    widget.show()   # Qt 顶级窗口默认隐藏，必须显式显示（v3.1.0 漏了这步，
+                    # 悬浮窗直接"消失"——进程在跑但屏幕上什么都看不到）
     tray = TrayIcon(widget)      # noqa: F841 托盘常驻引用（widget._tray 同步持有）
+    tray.show()     # QSystemTrayIcon 同样默认隐藏：不 show 托盘里也没图标，
+                    # 用户连"找回悬浮窗"的入口都没有
     widget._tray = tray
     try:
         app.setWindowIcon(make_icon(widget.t))

@@ -6,7 +6,7 @@
 #define MyAppName "额度悬浮窗"
 #define MyAppNameEn "LLM Usage Widget"
 #ifndef MyAppVersion
-  #define MyAppVersion "2.8.5"
+  #define MyAppVersion "3.1.1"
 #endif
 #define MyAppPublisher "joeyxd19"
 #define MyAppURL "https://github.com/joeyxd19/llm-usage-widget"
