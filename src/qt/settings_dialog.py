@@ -900,6 +900,14 @@ class SettingsDialog(QDialog):
 
     def _save(self):
         """汇总表单为配置 patch（脏值收敛规则与 v2 _save 逐条一致）。"""
+        # 页面是懒构建的（首次进入才创建）：没点开过的页里控件还不存在，
+        # 直接读 _scale_group / warn_spin 等会 AttributeError，在 Qt 槽里
+        # 被静默吞掉，表现为「点保存毫无反应、什么都没保存」。
+        # 保存前先把全部页面补建齐（只发生一次，开销很小）。
+        for key, _label, _sub, _hue in SET_PAGES:
+            if key not in self._pages:
+                self._pages[key] = self._make_page(key)
+                self._pages_widget.addWidget(self._pages[key])
         scale = self._pill_value(self._scale_group)
         try:
             scale = float(scale)
