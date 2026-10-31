@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QCheckBox,
                                QWidget)
 
 from core.config import (APP_NAME, APP_VERSION, SCALE_SHORT, SCALE_STEPS,
-                         _to_int, config_path, data_dir)
+                         _to_bool, _to_int, config_path, data_dir)
 
 from .theme import C_ACCENT_V, C_ACCENT_Z, C_GREEN, C_RED, C_YELLOW
 
@@ -328,7 +328,8 @@ class SettingsDialog(QDialog):
         except (TypeError, ValueError):
             opacity = 96
         self.opacity0 = min(100, max(60, opacity))
-        self.edge0 = bool(cfg.get("edge_dock", True))
+        self.edge0 = bool(cfg.get("edge_dock", False))
+        self.edge_glow0 = _to_bool(cfg.get("edge_glow", True), True)
         self.dock_len0 = _to_int(cfg.get("dock_len", 150), 150, 40, 240)
         self.refresh0 = _to_int(cfg.get("refresh_minutes", 5), 5, 1, 120)
         self.warn0 = _to_int(cfg.get("warn_percent", 80), 80, 10, 98)
@@ -796,12 +797,20 @@ class SettingsDialog(QDialog):
 
         card = self._card(lay, "贴边收起", "#a88fff")
         right = self._row(card, "贴边收起",
-                          "拖到屏幕边缘自动收起，只留进度小条，鼠标移上去弹出")
+                          "拖到屏幕边缘自动收起为胶囊把手，悬停片刻或点击展开；"
+                          "抓住把手还能拖去别的边")
         self.edge_switch = Switch(self._skin)
         self.edge_switch.setChecked(self.edge0)
         right.addWidget(self.edge_switch)
         right.addStretch(1)
-        right = self._row(card, "长条长度", "收起后小条的长度（40 ～ 240px）")
+        right = self._row(card, "收起把手光效",
+                          "把手带亮边与呼吸光效，收起后也一眼能找到；"
+                          "关闭后为静态纯色")
+        self.edge_glow_switch = Switch(self._skin)
+        self.edge_glow_switch.setChecked(self.edge_glow0)
+        right.addWidget(self.edge_glow_switch)
+        right.addStretch(1)
+        right = self._row(card, "把手长度", "收起后胶囊把手的长度（40 ～ 240px）")
         self.dock_len_spin = self._stepper(40, 240, 10, "px", self.dock_len0)
         right.addWidget(self.dock_len_spin)
         right.addStretch(1)
@@ -922,6 +931,7 @@ class SettingsDialog(QDialog):
             },
             "theme": theme,
             "edge_dock": bool(self.edge_switch.isChecked()),
+            "edge_glow": bool(self.edge_glow_switch.isChecked()),
             "dock_len": int(self.dock_len_spin.value()),
             "ui_scale": scale,
             "opacity": min(1.0, max(0.6, int(self.opacity_spin.value()) / 100.0)),

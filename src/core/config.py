@@ -43,9 +43,11 @@ DEFAULT_CONFIG = {
     "window_x": 120,
     "window_y": 120,
     "theme": "auto",           # auto 自动跟随背景 | dark 深色 | light 浅色
-    "edge_dock": True,         # 贴边自动收起
+    "edge_dock": False,        # 贴边自动收起（默认关：新用户先看到完整悬浮窗；老配置里的 true 保持 true）
+    "edge_glow": True,         # 收起把手光效（1px 亮描边 + 呼吸动画；关了就是纯色静态条）
     "dock_side": "none",       # none/left/right/top/bottom（上次收起的边）
     "dock_len": 150,           # 贴边长条默认长度（px，40~240）
+    "dock_hint_shown": False,  # 首次贴边收起的「把手在哪」提示已展示过
 }
 
 SCALE_STEPS = [0.75, 0.9, 1.0, 1.15, 1.3]
@@ -155,7 +157,8 @@ def load_config():
             cfg[section].update(user[section])
     for key in ("refresh_minutes", "opacity", "ui_scale", "warn_percent",
                 "critical_percent", "notify", "burn_predict", "window_x",
-                "window_y", "theme", "edge_dock", "dock_side", "dock_len"):
+                "window_y", "theme", "edge_dock", "edge_glow", "dock_side",
+                "dock_len", "dock_hint_shown"):
         if key in user:
             cfg[key] = user[key]
     return cfg
@@ -200,3 +203,25 @@ def _to_int(value, default, lo=None, hi=None):
 
 # 对外统一叫 to_int；保留旧名兼容 v2 内部调用习惯
 to_int = _to_int
+
+
+def _to_bool(value, default=False):
+    """宽松地把配置值转成 bool，识别不了的收敛到 default。
+
+    config.json 支持手动编辑，"false"、"0" 这类字符串若用裸 bool()
+    会被当成开启（非空字符串即真），呼吸光效这类开关会关不掉。"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("1", "true", "yes", "on"):
+            return True
+        if v in ("0", "false", "no", "off", ""):
+            return False
+    return default
+
+
+# 对外统一叫 to_bool
+to_bool = _to_bool

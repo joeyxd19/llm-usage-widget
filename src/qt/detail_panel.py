@@ -7,10 +7,10 @@ tk Canvas 绘制换成 QPainter。布局函数为纯函数（数据/配置作参
 绘制函数接收 QPainter 与主题/字体。"""
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
 
 from core.burn_predict import fmt_reset_info, predict_text
-from core.config import _to_int
+from core.config import _to_bool, _to_int
 
 from .theme import C_ACCENT_V, C_ACCENT_Z
 
@@ -115,6 +115,21 @@ def tag_bg(t, accent):
     if accent == C_ACCENT_V:
         return t["tag_v"]
     return t["track"]
+
+
+def handle_status(data, cfg, t):
+    """收起把手的状态档位：(状态色, 最紧张窗口的已用百分比 or None)。
+
+    「最重要供应商」= progress_groups 顺序（智谱优先）里第一个有数值的组，
+    取该组内最高的已用百分比（即最低余额）；档位颜色与主面板 color_for
+    完全联动（<warn 绿 / >=warn 黄 / >=crit 红，无数据退灰）。
+    接口字段无类型保证，统一走 safe_pct 过滤脏值。"""
+    for _name, _accent, bars in progress_groups(data, cfg):
+        vals = [v for v in (safe_pct(p) for _nm, p in bars) if v is not None]
+        if vals:
+            pct = max(vals)
+            return color_for(t, cfg, pct), pct
+    return t["dim"], None
 
 
 # --------------------------------------------------------------------------
@@ -236,14 +251,20 @@ def _qcolor(hexcolor):
 
 
 def _draw_text(p, x, cy, text, font, color, align="l"):
-    """垂直居中的单行文字（对齐 tk create_text 的 anchor 语义）。"""
+    """垂直居中的单行文字（对齐 tk create_text 的 anchor 语义：
+    "l" x 取左缘，"r" x 取右缘，"c" x 取中心）。"""
     p.setFont(font)
     p.setPen(_qcolor(color))
     fm = QFontMetrics(font)
     flags = {"l": Qt.AlignLeft, "r": Qt.AlignRight, "c": Qt.AlignHCenter}[align]
-    rect = QRectF(x, cy - fm.height() / 2.0, 4096 if align == "l" else
-                  (fm.horizontalAdvance(text) + 2 if align == "r" else 200),
-                  fm.height())
+    if align == "l":
+        rect = QRectF(x, cy - fm.height() / 2.0, 4096, fm.height())
+    elif align == "r":
+        rect = QRectF(x - fm.horizontalAdvance(text) - 2,
+                      cy - fm.height() / 2.0,
+                      fm.horizontalAdvance(text) + 2, fm.height())
+    else:
+        rect = QRectF(x - 100, cy - fm.height() / 2.0, 200, fm.height())
     p.drawText(rect, flags | Qt.AlignVCenter, text)
 
 
@@ -363,65 +384,158 @@ def paint_detail(p, w, h, blocks, pad, t, cfg, fonts, radius, status_right,
             _draw_text(p, w - pad, cy, "v" + app_version, f_small, t["dim"], "r")
 
 
-def paint_handle(p, hw, hl, t, groups, k, cfg, vertical):
-    """贴边收起状态：边缘只留一条短把手，内嵌各供应商微型进度条。
+def handle_geometry(win_w, win_h, side, thick, margin):
+    """胶囊把手在把手窗内的矩形 (x0, y0, x1, y1)。
 
-    vertical 与贴边方向一致（left/right 贴边时把手竖放）。"""
+    贴边侧与窗口对应边重合（直角贴屏幕边缘），其余三侧留 margin 透明
+    余量，作为悬停 1.05 微放大的出血位。"""
+    if side == "left":
+        return 0.0, float(margin), float(thick), float(win_h) - margin
+    if side == "right":
+        return (float(win_w) - thick, float(margin),
+                float(win_w), float(win_h) - margin)
+    if side == "top":
+        return float(margin), 0.0, float(win_w) - margin, float(thick)
+    return (float(margin), float(win_h) - thick,
+            float(win_w) - margin, float(win_h))
+
+
+def handle_radius(k, thick):
+    """外侧大圆角半径：目标 12k 收在 10~14px，并守住厚度的几何上限。"""
+    r = max(10, min(14, int(round(12 * k))))
+    return float(min(r, max(6, thick - 8)))
+
+
+def _capsule_path(x0, y0, x1, y1, side, r):
+    """胶囊路径：贴屏幕边的一侧保持直角，外侧两角为大圆角。"""
+    path = QPainterPath()
+    if side == "left":            # 平边在左，右侧两角圆
+        path.moveTo(x0, y0)
+        path.lineTo(x1 - r, y0)
+        path.arcTo(QRectF(x1 - 2 * r, y0, 2 * r, 2 * r), 90.0, -90.0)
+        path.lineTo(x1, y1 - r)
+        path.arcTo(QRectF(x1 - 2 * r, y1 - 2 * r, 2 * r, 2 * r), 0.0, -90.0)
+        path.lineTo(x0, y1)
+    elif side == "right":         # 平边在右，左侧两角圆
+        path.moveTo(x1, y0)
+        path.lineTo(x0 + r, y0)
+        path.arcTo(QRectF(x0, y0, 2 * r, 2 * r), 90.0, 90.0)
+        path.lineTo(x0, y1 - r)
+        path.arcTo(QRectF(x0, y1 - 2 * r, 2 * r, 2 * r), 180.0, 90.0)
+        path.lineTo(x1, y1)
+    elif side == "top":           # 平边在上，底下两角圆
+        path.moveTo(x0, y0)
+        path.lineTo(x0, y1 - r)
+        path.arcTo(QRectF(x0, y1 - 2 * r, 2 * r, 2 * r), 180.0, 90.0)
+        path.lineTo(x1 - r, y1)
+        path.arcTo(QRectF(x1 - 2 * r, y1 - 2 * r, 2 * r, 2 * r), 270.0, 90.0)
+        path.lineTo(x1, y0)
+    else:                         # 平边在下，顶上两角圆
+        path.moveTo(x0, y1)
+        path.lineTo(x0, y0 + r)
+        path.arcTo(QRectF(x0, y0, 2 * r, 2 * r), 180.0, -90.0)
+        path.lineTo(x1 - r, y0)
+        path.arcTo(QRectF(x1 - 2 * r, y0, 2 * r, 2 * r), 90.0, -90.0)
+        path.lineTo(x1, y1)
+    path.closeSubpath()
+    return path
+
+
+# chevron 默认指向屏幕内侧（即展开方向），悬停在此基础上顺时针转 90°
+CHEV_BASE = {"left": 0.0, "top": 90.0, "right": 180.0, "bottom": 270.0}
+
+
+def paint_handle(p, win_w, win_h, side, thick, margin, k, t, cfg,
+                 scale=1.0, chev_deg=0.0, hover=False, dot_color=None,
+                 pct_text=None, font=None):
+    """贴边收起把手（胶囊造型，Traffic Monitor / uTools 风格）：
+
+    - 贴边侧直角贴屏幕边缘，外侧两角大圆角（10~14px 随缩放）；
+    - 内部沿把手长度轴排布：状态色圆点 → 额度百分比小字 → 展开 chevron，
+      长度放不下时先省百分比文字，只留圆点 + 箭头；
+    - scale / chev_deg 由悬停动效驱动：整体绕贴边面中点微放大（只朝
+      屏幕内侧与两端鼓出，出血余量内不裁切），箭头旋转 90°；
+    - edge_glow 开启时用亮一档的 handle_edge 描边配合呼吸光效，
+      关闭时退回普通卡片描边的静态胶囊。"""
     p.setRenderHint(QPainter.Antialiasing, True)
-    _rrect(p, 0, 0, hw, hl, min(hw, hl) / 2.0, fill=t["card"], outline=t["line"])
-    if not groups:
-        p.setPen(Qt.NoPen)
-        p.setBrush(_qcolor(t["track"]))
-        p.drawEllipse(QPointF(hw / 2.0, hl / 2.0), 2 * k, 2 * k)
-        return
-    n = len(groups)
+    x0, y0, x1, y1 = handle_geometry(win_w, win_h, side, thick, margin)
+    r = handle_radius(k, thick)
+    vertical = side in ("left", "right")
     if vertical:
-        pad_v, gap_v = int(5 * k), int(6 * k)
-        seg = (hl - 2 * pad_v - gap_v * (n - 1)) / float(n)
-        bar_w, bar_gap = max(2, int(3.5 * k)), max(1, int(2 * k))
-        for gi, (_name, _accent, bars) in enumerate(groups):
-            y0 = pad_v + gi * (seg + gap_v)
-            slots = list(bars[:2])
-            while len(slots) < 2:
-                slots.append(None)
-            total_w = len(slots) * bar_w + (len(slots) - 1) * bar_gap
-            bx = (hw - total_w) / 2.0
-            for bi, item in enumerate(slots):
-                x0 = bx + bi * (bar_w + bar_gap)
-                p.setPen(Qt.NoPen)
-                p.setBrush(_qcolor(t["track"]))
-                p.drawRect(QRectF(x0, y0, bar_w, seg))
-                if item and item[1] is not None:
-                    try:
-                        pct = max(0.0, min(100.0, float(item[1])))
-                    except Exception:
-                        continue
-                    ph = seg * pct / 100.0
-                    if ph >= 1:
-                        p.setBrush(_qcolor(color_for(t, cfg, pct)))
-                        p.drawRect(QRectF(x0, y0 + seg - ph, bar_w, ph))
+        ax, ay = (x0 if side == "left" else x1), (y0 + y1) / 2.0
+        axis0, axis_len = y0, y1 - y0
+        cross = (x0 + x1) / 2.0
     else:
-        pad_h, gap_h = int(6 * k), int(6 * k)
-        seg = (hw - 2 * pad_h - gap_h * (n - 1)) / float(n)
-        bar_h, bar_gap = max(2, int(3.5 * k)), max(1, int(2 * k))
-        for gi, (_name, _accent, bars) in enumerate(groups):
-            x0 = pad_h + gi * (seg + gap_h)
-            slots = list(bars[:2])
-            while len(slots) < 2:
-                slots.append(None)
-            total_hh = len(slots) * bar_h + (len(slots) - 1) * bar_gap
-            by = (hl - total_hh) / 2.0
-            for bi, item in enumerate(slots):
-                yy = by + bi * (bar_h + bar_gap)
-                p.setPen(Qt.NoPen)
-                p.setBrush(_qcolor(t["track"]))
-                p.drawRect(QRectF(x0, yy, seg, bar_h))
-                if item and item[1] is not None:
-                    try:
-                        pct = max(0.0, min(100.0, float(item[1])))
-                    except Exception:
-                        continue
-                    pw = seg * pct / 100.0
-                    if pw >= 1:
-                        p.setBrush(_qcolor(color_for(t, cfg, pct)))
-                        p.drawRect(QRectF(x0, yy, pw, bar_h))
+        ax, ay = (x0 + x1) / 2.0, (y0 if side == "top" else y1)
+        axis0, axis_len = x0, x1 - x0
+        cross = (y0 + y1) / 2.0
+
+    # 悬停放大的锚点 = 贴边面中点：贴边侧不动，鼓出方向全在出血余量里
+    p.save()
+    p.translate(ax, ay)
+    s = max(0.5, min(2.0, float(scale)))
+    p.scale(s, s)
+    p.translate(-ax, -ay)
+
+    glow = _to_bool(cfg.get("edge_glow", True), True)
+    edge = t.get("handle_edge", t["line"]) if glow else t["line"]
+    p.setPen(QPen(_qcolor(edge), 1))
+    p.setBrush(_qcolor(t["card"]))
+    p.drawPath(_capsule_path(x0, y0, x1, y1, side, r))
+
+    # ---- 内容（沿长度轴）：状态圆点 → 百分比 → chevron ----
+    dot_d = max(5, int(7 * k))
+    chev_s = max(7, int(10 * k))
+    gap = max(3, int(5 * k))
+    pad = max(6, int(9 * k))
+    fm = QFontMetrics(font) if font is not None else None
+    text_h = max(8, fm.height()) if fm is not None else max(8, int(9 * k))
+    show_text = bool(pct_text) and fm is not None
+    if show_text and vertical:
+        # 竖把手：文字横排，宽度受胶囊厚度约束
+        show_text = _measure(font, pct_text) <= thick - 2 * max(3, int(4 * k))
+    text_len = text_h if (show_text and vertical) else (
+        _measure(font, pct_text) if show_text else 0.0)
+    avail = axis_len - 2 * pad
+    need = dot_d + gap + text_len + (gap + chev_s if show_text else chev_s)
+    if show_text and need > avail:
+        show_text = False   # 长度不够：先省文字（短把手段），圆点+箭头必留
+        text_len = 0.0
+        need = dot_d + gap + chev_s
+    cur = axis0 + pad + max(0.0, (avail - need) / 2.0)
+
+    # 状态圆点（档位色由 handle_status 给出，与主面板 color_for 联动）
+    p.setPen(Qt.NoPen)
+    p.setBrush(_qcolor(dot_color or t["dim"]))
+    dc = cur + dot_d / 2.0
+    if vertical:
+        p.drawEllipse(QPointF(cross, dc), dot_d / 2.0, dot_d / 2.0)
+    else:
+        p.drawEllipse(QPointF(dc, cross), dot_d / 2.0, dot_d / 2.0)
+    cur += dot_d + gap
+    # 百分比小字（无数据时整段省略，灰点已能表达「暂无」）。
+    # 百分比是把手的核心信息，常亮主文字色保证可读；悬停提亮只给 chevron
+    if show_text:
+        if vertical:
+            _draw_text(p, cross, cur + text_h / 2.0, pct_text, font,
+                       t["text"], "c")
+        else:
+            _draw_text(p, cur, cross, pct_text, font, t["text"], "l")
+        cur += text_len + gap
+    # 展开 chevron
+    cc = cur + chev_s / 2.0
+    half, tip, back = chev_s * 0.40, chev_s * 0.46, chev_s * 0.06
+    pen = QPen(_qcolor(t["text"] if hover else t["dim"]), max(1.2, 1.6 * k))
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    p.setPen(pen)
+    p.save()
+    if vertical:
+        p.translate(cross, cc)
+    else:
+        p.translate(cc, cross)
+    p.rotate(CHEV_BASE.get(side, 0.0) + float(chev_deg) * 90.0)
+    p.drawLine(QPointF(-back, -half), QPointF(tip, 0.0))
+    p.drawLine(QPointF(tip, 0.0), QPointF(-back, half))
+    p.restore()
+    p.restore()

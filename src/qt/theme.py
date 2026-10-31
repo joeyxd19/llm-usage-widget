@@ -20,12 +20,15 @@ THEMES = {
         "dim": C_TEXT_DIM, "track": C_TRACK,
         "ok": C_GREEN, "warn": C_YELLOW, "crit": C_RED,
         "tag_z": "#2a3550", "tag_v": "#45242e",
+        # 贴边把手专用 1px 描边：比卡片描边亮一档，收起后也能和桌面区分
+        "handle_edge": "#7e89a8",
     },
     "light": {
         "card": "#ffffff", "line": "#d8dce2", "text": "#202124",
         "dim": "#5f6368", "track": "#e6e8ec",
         "ok": "#16a34a", "warn": "#d97706", "crit": "#dc2626",
         "tag_z": "#e8eeff", "tag_v": "#ffe9ee",
+        "handle_edge": "#96a0b5",
     },
 }
 

@@ -8,8 +8,7 @@ v2 只用 Shell_NotifyIcon 弹通知气泡，无常驻托盘；v3 用 QSystemTra
 
 from PySide6.QtCore import Qt, QRectF, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
-from PySide6.QtGui import QActionGroup, QCursor
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QActionGroup
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from core.config import APP_NAME
@@ -134,21 +133,9 @@ class TrayIcon(QSystemTrayIcon):
             self._show_widget()
 
     def _show_widget(self):
-        """左键：收起态展开详情面板（8 秒后无指针自动收回），其余前置。"""
-        w = self.widget
-        if w.dock_state == "docked" and not w._animating:
-            w._expand_from_dock()
-            QTimer.singleShot(8000, self._auto_collapse)
-        else:
-            w.raise_()
-            w.activateWindow()
-
-    def _auto_collapse(self):
-        """托盘点开的面板超时收回：指针仍在窗口上就先不打扰。"""
-        w = self.widget
-        if (w.dock_state == "expanded" and not w._animating
-                and not w._pointer_in_window(QCursor.pos())):
-            w._collapse_to_dock()
+        """左键 / 菜单「显示悬浮窗」一键找回：取消贴边收起、位置丢失时
+        拉回屏幕可见区，再前置激活——从托盘一定能把悬浮窗找回来。"""
+        self.widget.restore_visible()
 
     # ---------------- 状态同步 ----------------
 

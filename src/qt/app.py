@@ -73,6 +73,35 @@ def _already_running_message():
         app.quit()
 
 
+def validate_startup_pos():
+    """启动防呆：校验 config 记忆的窗口位置是否落在任一屏幕可见区内。
+
+    改分辨率、拔显示器、远程会话等场景下 window_x/window_y 可能跑到
+    所有屏幕之外，悬浮窗直接“消失”且用户无从找回——这是“桌面上看不到
+    悬浮窗”的主要来源之一。不可见时重置到主屏右下角默认位（留出任务栏）
+    并写回配置，返回是否发生重置（供 UsageWidget 弹 toast 提醒）。
+    任何一步异常都按“不重置”处理，绝不因防呆本身拦住启动。"""
+    from core.config import _to_int, load_config, save_config_patch
+    from qt.main_widget import (default_visible_pos, estimate_window_size,
+                                pos_on_any_screen)
+    try:
+        cfg = load_config()
+        try:
+            k = min(1.3, max(0.75, float(cfg.get("ui_scale", 1.0))))
+        except (TypeError, ValueError):
+            k = 1.0
+        w, h = estimate_window_size(k)
+        x = _to_int(cfg.get("window_x", 120), 120)
+        y = _to_int(cfg.get("window_y", 120), 120)
+        if pos_on_any_screen(x, y, w, h):
+            return False
+        nx, ny = default_visible_pos(k)
+        save_config_patch({"window_x": nx, "window_y": ny})
+        return True
+    except Exception:
+        return False
+
+
 def main():
     _setup_dpi_policy()
 
@@ -105,7 +134,9 @@ def main():
     from qt.main_widget import UsageWidget
     from qt.tray import TrayIcon, make_icon
 
-    widget = UsageWidget()
+    # 启动防呆：窗口记忆位置丢失时先复位（QApplication 已建，屏幕列表可用）
+    pos_reset = validate_startup_pos()
+    widget = UsageWidget(pos_reset=pos_reset)
     tray = TrayIcon(widget)      # noqa: F841 托盘常驻引用（widget._tray 同步持有）
     widget._tray = tray
     try:
