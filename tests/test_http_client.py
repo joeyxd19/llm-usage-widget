@@ -7,6 +7,8 @@
 import io
 import urllib.error
 
+import pytest
+
 from core import http_client as hc
 
 
@@ -105,3 +107,36 @@ def test_once_plain_http_error_no_retry_after():
     code, parsed, ra = hc._http_json_once(
         _FakeOpener(exc=err), "http://x", None, None, 5)
     assert (code, parsed, ra) == (401, "no", 0.0)
+
+
+# ---------------- open_url：大文件流式下载的双路回退 ----------------
+
+def test_open_url_falls_back_to_proxy(monkeypatch):
+    """直连网络层失败时回退系统代理路。"""
+    direct = _FakeOpener(exc=urllib.error.URLError("refused"))
+    proxy = _FakeOpener(_FakeResp(b"data"))
+    monkeypatch.setattr(hc, "_openers", lambda: (direct, proxy))
+    with hc.open_url("http://x") as resp:
+        assert resp.read() == b"data"
+
+
+def test_open_url_http_error_no_fallback(monkeypatch):
+    """404/403 等服务端响应不换路重试，直接抛出。"""
+    err = urllib.error.HTTPError("http://x", 403, "Forbidden",
+                                 {}, io.BytesIO(b"no"))
+    direct = _FakeOpener(exc=err)
+    proxy = _FakeOpener(_FakeResp(b"data"))
+    monkeypatch.setattr(hc, "_openers", lambda: (direct, proxy))
+    with pytest.raises(urllib.error.HTTPError):
+        hc.open_url("http://x")
+
+
+def test_open_url_all_fail_raises_last(monkeypatch):
+    """两条路都在网络层失败时抛最后一个异常。"""
+    def opener_with(msg):
+        return _FakeOpener(exc=urllib.error.URLError(msg))
+    monkeypatch.setattr(
+        hc, "_openers",
+        lambda: (opener_with("first"), opener_with("second")))
+    with pytest.raises(urllib.error.URLError, match="second"):
+        hc.open_url("http://x")

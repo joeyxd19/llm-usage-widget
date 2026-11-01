@@ -27,10 +27,9 @@ import sys
 import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
 
 from .autostart import AUTOSTART_VBS_NAME
+from .http_client import http_json, open_url
 
 GITHUB_API = (
     "https://api.github.com/repos/joeyxd19/llm-usage-widget/releases/latest"
@@ -321,9 +320,15 @@ class Updater:
         return f"llm-usage-widget_v{self._version_from_tag(tag)}.exe"
 
     def _download_manifest(self, url):
-        req = urllib.request.Request(url, headers={"User-Agent": APP_NAME})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        code, data = http_json(url, headers={"User-Agent": APP_NAME},
+                               timeout=15)
+        if code == 0:
+            raise RuntimeError("无法下载更新清单，请开启系统代理后重试")
+        if code != 200:
+            raise RuntimeError("更新清单下载失败（HTTP %s）" % code)
+        if not isinstance(data, dict):
+            raise RuntimeError("更新清单格式异常")
+        return data
 
     def _compute_delta(self, manifest):
         """对比本地文件与 manifest，返回变更统计。"""
@@ -343,15 +348,24 @@ class Updater:
         }
 
     def _fetch_latest(self):
-        req = urllib.request.Request(
+        # GitHub API 走与供应商接口同一套「直连→系统代理」回退 + 退避
+        # 重试；此前裸 urlopen 直连，国内网络下检查更新会静默超时。
+        code, data = http_json(
             GITHUB_API,
             headers={
                 "Accept": "application/vnd.github+json",
                 "User-Agent": APP_NAME,
             },
+            timeout=15,
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        if code == 0:
+            raise RuntimeError("无法连接 GitHub，请开启系统代理后重试")
+        if code != 200:
+            if code == 403:
+                raise RuntimeError("GitHub API 请求次数达上限，请稍后再试")
+            raise RuntimeError("GitHub 返回 HTTP %s" % code)
+        if not isinstance(data, dict):
+            raise RuntimeError("GitHub 返回了无法解析的数据")
         return data["tag_name"], data.get("body", ""), data.get("assets", [])
 
     def _verify_package(self, url, dest, manifest):
@@ -384,8 +398,9 @@ class Updater:
             f"llm-usage-widget_update_v{version}{ext}",
         )
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": APP_NAME})
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            # 大文件流式下载：直连失败自动回退系统代理（open_url）
+            with open_url(url, headers={"User-Agent": APP_NAME},
+                          timeout=120) as resp:
                 total = int(resp.headers.get("Content-Length", 0))
                 downloaded = 0
                 block = 64 * 1024

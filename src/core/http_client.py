@@ -27,6 +27,30 @@ def _retry_after_of(e):
     return max(0.0, min(v, _RETRY_AFTER_CAP))
 
 
+def _openers():
+    """两路 opener：直连优先（国内接口最稳），其次系统代理。"""
+    return (urllib.request.build_opener(urllib.request.ProxyHandler({})),
+            urllib.request.build_opener())
+
+
+def open_url(url, headers=None, timeout=30):
+    """打开 URL 返回响应对象（供大文件流式下载）。
+
+    直连在网络层失败时回退系统代理；HTTPError（404/403 等服务端响应）
+    直接抛出不换路——服务端判定与走哪条网络路径无关。两条路都在网络
+    层失败时抛出最后一个异常。"""
+    last = None
+    for opener in _openers():
+        req = urllib.request.Request(url, headers=headers or {})
+        try:
+            return opener.open(req, timeout=timeout)
+        except urllib.error.HTTPError:
+            raise
+        except Exception as e:
+            last = e
+    raise last
+
+
 def _http_json_once(opener, url, headers, data, timeout):
     """单路请求，返回 (code, parsed, retry_after)。
 
@@ -67,8 +91,7 @@ def http_json(url, headers=None, data=None, timeout=20):
     """
     def _round():
         result = (0, "未知错误", 0.0)
-        for opener in (urllib.request.build_opener(urllib.request.ProxyHandler({})),
-                       urllib.request.build_opener()):
+        for opener in _openers():
             result = _http_json_once(opener, url, headers, data, timeout)
             if result[0] != 0:
                 return result
