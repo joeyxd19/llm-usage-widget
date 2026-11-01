@@ -14,6 +14,13 @@ on:
 permissions:
   contents: write
 
+# 代码签名（可选，属用户决策）：需先购买 OV 级代码签名证书，或改用
+# Azure Trusted Signing；把 PFX 的 base64 放进仓库 Secret
+# WINDOWS_SIGN_CERT_PFX、证书密码放进 WINDOWS_SIGN_CERT_PASSWORD。
+# 未配置 Secret 时下面的签名步骤自动跳过，发布流程不受影响。
+env:
+  SIGN_CERT: ${{ secrets.WINDOWS_SIGN_CERT_PFX }}
+
 jobs:
   build:
     runs-on: windows-latest
@@ -149,6 +156,47 @@ jobs:
           if (-not (Test-Path $delta)) {
             Copy-Item "dist/llm-usage-widget_v${v}_update.zip" $delta -Force
           }
+
+      # ---- 代码签名（预留）----
+      # 只签 Setup.exe（用户主要分发入口）。若要做到全覆盖（update.zip /
+      # delta.zip 里的 onedir exe 也签名），需把签名步骤挪到「打包 onedir」
+      # 之后、压缩之前，对内部 exe 签名后再压缩。
+      - name: 签名安装包（未配置证书时自动跳过）
+        if: env.SIGN_CERT != ''
+        shell: pwsh
+        env:
+          SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          [IO.File]::WriteAllBytes(
+            $pfxPath, [Convert]::FromBase64String($env:SIGN_CERT))
+          try {
+            $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+              -Recurse -Filter signtool.exe |
+              Where-Object { $_.FullName -match 'x64' } |
+              Select-Object -First 1 -ExpandProperty FullName
+            $targets = (Get-ChildItem "dist/installer/*.exe").FullName
+            & $signtool sign /f $pfxPath /p $env:SIGN_CERT_PASSWORD `
+              /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $targets
+            if ($LASTEXITCODE -ne 0) { throw "signtool 退出码 $LASTEXITCODE" }
+          } finally {
+            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          }
+
+      # ---- 校验和封签（v3.2.0 起）----
+      # manifest 先于两个 zip 生成，等 update.zip / delta.zip 全部就绪后，
+      # 把它们的 sha256 补写进 manifest 的 packages 段；客户端下载后按
+      # 它校验完整性，损坏的包不会被交给安装脚本替换应用文件。
+      - name: 封签更新包校验和
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          python scripts/generate_manifest.py --seal \
+            "dist/llm-usage-widget_v${VERSION}_manifest.json" \
+            "dist/llm-usage-widget_v${VERSION}_update.zip" \
+            "dist/llm-usage-widget_v${VERSION}_delta.zip"
 
       - name: 上传到 Release
         uses: softprops/action-gh-release@v2

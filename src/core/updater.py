@@ -85,6 +85,18 @@ def _ps_escape(s):
     return s.replace("'", "''")
 
 
+def _sha256_file(path):
+    """流式计算文件 sha256，避免把整个安装包读进内存。"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(256 * 1024)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
 class Updater:
     def __init__(self, current_version, on_prompt=None, on_message=None,
                  on_error=None, on_progress=None, on_quit=None):
@@ -323,14 +335,7 @@ class Updater:
             if not os.path.isfile(local):
                 changed.append(path)
                 continue
-            h = hashlib.sha256()
-            with open(local, "rb") as f:
-                while True:
-                    chunk = f.read(256 * 1024)
-                    if not chunk:
-                        break
-                    h.update(chunk)
-            if h.hexdigest() != info.get("sha256"):
+            if _sha256_file(local) != info.get("sha256"):
                 changed.append(path)
         return {
             "changed_count": len(changed),
@@ -348,6 +353,29 @@ class Updater:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         return data["tag_name"], data.get("body", ""), data.get("assets", [])
+
+    def _verify_package(self, url, dest, manifest):
+        """按 manifest.packages 校验下载包完整性（v3.2.0 起）。
+
+        manifest 没有 packages 段或没有该文件的条目时跳过——兼容旧版
+        Release 与没走封签的发布流程；有校验但不匹配则抛异常，由
+        _download_worker 的 except 接住走 _on_error，绝不把损坏的包
+        交给安装脚本替换应用文件。
+        """
+        if not isinstance(manifest, dict):
+            return
+        packages = manifest.get("packages")
+        if not isinstance(packages, dict):
+            return
+        expect = packages.get(os.path.basename(url))
+        if not expect:
+            return
+        actual = _sha256_file(dest)
+        if str(actual).lower() != str(expect).lower():
+            raise ValueError(
+                "更新包完整性校验失败（sha256 不匹配），文件可能已损坏，"
+                "请重试，或到 Releases 页面手动下载。"
+            )
 
     def _download_worker(self, version, url, manifest=None):
         ext = ".zip" if self.pkg in ("onedir", "installed") else ".exe"
@@ -373,6 +401,7 @@ class Updater:
                         if total:
                             pct = downloaded * 100 // total
                             self._set_progress(pct)
+            self._verify_package(url, dest, manifest)
             self._on_downloaded(version, dest, manifest)
         except Exception as exc:
             err = str(exc)
@@ -555,6 +584,18 @@ class Updater:
 
     Expand-Archive -Path $zip -DestinationPath $tempDir -Force
     $newDir = Join-Path $tempDir 'llm-usage-widget'
+
+    # 备份旧 exe 与 _internal：全部替换成功后删除备份；任一步失败则
+    # 回滚，避免留下"半新半旧"的安装目录导致程序起不来
+    $bakDir = Join-Path $appDir '.update_bak'
+    if (Test-Path $bakDir) {{ Remove-Item -Path $bakDir -Recurse -Force }}
+    New-Item -ItemType Directory -Path $bakDir -Force | Out-Null
+    if (Test-Path (Join-Path $appDir $exeName)) {{
+        Copy-Item -Path (Join-Path $appDir $exeName) -Destination (Join-Path $bakDir $exeName) -Force
+    }}
+    if (Test-Path (Join-Path $appDir '_internal')) {{
+        Copy-Item -Path (Join-Path $appDir '_internal') -Destination (Join-Path $bakDir '_internal') -Recurse -Force
+    }}
 {manifest_block}
 
     $vbs = '{vbs_path}'
@@ -568,9 +609,33 @@ class Updater:
     Remove-Item -Path $tempDir -Recurse -Force
     Remove-Item -Path $zip -Force
     if ('{manifest}' -ne '') {{ Remove-Item -Path '{manifest}' -Force -ErrorAction SilentlyContinue }}
+    # 全部替换成功，备份可删
+    Remove-Item -Path $bakDir -Recurse -Force -ErrorAction SilentlyContinue
     Start-Process -FilePath $oldExe -WorkingDirectory $appDir
 }} catch {{
     $_.Exception.Message + '`n' + $_.ScriptStackTrace | Out-File -FilePath '{error_log}' -Encoding utf8
+    # 回滚：恢复旧 exe 与 _internal；回滚自身成功才删备份，失败则保留
+    # .update_bak 供手动恢复，并把回滚结果追加进日志
+    $rollback = ''
+    try {{
+        if ($bakDir -and (Test-Path $bakDir)) {{
+            if (Test-Path (Join-Path $bakDir $exeName)) {{
+                Copy-Item -Path (Join-Path $bakDir $exeName) -Destination (Join-Path $appDir $exeName) -Force
+            }}
+            $bakInternal = Join-Path $bakDir '_internal'
+            if (Test-Path $bakInternal) {{
+                Remove-Item -Path (Join-Path $appDir '_internal') -Recurse -Force
+                Copy-Item -Path $bakInternal -Destination (Join-Path $appDir '_internal') -Recurse -Force
+            }}
+            Remove-Item -Path $bakDir -Recurse -Force
+            $rollback = '已回滚到更新前状态'
+        }}
+    }} catch {{
+        $rollback = '回滚失败，备份保留在 ' + $bakDir
+    }}
+    if ($rollback -ne '') {{
+        $rollback | Out-File -FilePath '{error_log}' -Append -Encoding utf8
+    }}
 }} finally {{
     Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
 }}
@@ -595,6 +660,12 @@ class Updater:
     $newExeTemp = '{new_}'
     $appDir = '{app_dir}'
 
+    # 备份旧 exe：替换成功后删除备份；失败则回滚，避免程序起不来
+    $bakDir = Join-Path $appDir '.update_bak'
+    if (Test-Path $bakDir) {{ Remove-Item -Path $bakDir -Recurse -Force }}
+    New-Item -ItemType Directory -Path $bakDir -Force | Out-Null
+    Copy-Item -Path $oldExe -Destination (Join-Path $bakDir (Split-Path -Leaf $oldExe)) -Force
+
     Move-Item -Path $newExeTemp -Destination $oldExe -Force
 
     $vbs = '{vbs_path}'
@@ -604,9 +675,28 @@ class Updater:
         [System.IO.File]::WriteAllText($vbs, $content, [System.Text.Encoding]::Default)
     }}
 
+    # 全部替换成功，备份可删
+    Remove-Item -Path $bakDir -Recurse -Force -ErrorAction SilentlyContinue
     Start-Process -FilePath $oldExe -WorkingDirectory $appDir
 }} catch {{
     $_.Exception.Message + '`n' + $_.ScriptStackTrace | Out-File -FilePath '{error_log}' -Encoding utf8
+    # 回滚：恢复旧 exe；回滚自身成功才删备份，失败则保留 .update_bak
+    $rollback = ''
+    try {{
+        if ($bakDir -and (Test-Path $bakDir)) {{
+            $bakExe = Join-Path $bakDir (Split-Path -Leaf $oldExe)
+            if (Test-Path $bakExe) {{
+                Copy-Item -Path $bakExe -Destination $oldExe -Force
+                Remove-Item -Path $bakDir -Recurse -Force
+                $rollback = '已回滚到更新前版本'
+            }}
+        }}
+    }} catch {{
+        $rollback = '回滚失败，备份保留在 ' + $bakDir
+    }}
+    if ($rollback -ne '') {{
+        $rollback | Out-File -FilePath '{error_log}' -Append -Encoding utf8
+    }}
 }} finally {{
     Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
 }}

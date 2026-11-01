@@ -9,6 +9,8 @@
 - 分段选择器 → 一组互斥 QPushButton（pill 属性驱动 QSS）
 - 卡片滚动 → QScrollArea（Qt 原生 wordWrap，窄窗不再需要手动适配换行）"""
 
+import json
+
 from PySide6.QtCore import QSize, Qt, QRectF
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QCheckBox,
@@ -234,11 +236,11 @@ class SettingsDialog(QDialog):
         self._skin = dict(SKINS["light" if skin == "light" else "dark"])
         self.setWindowTitle("设置 - " + APP_NAME)
         self.setWindowModality(Qt.ApplicationModal)
-        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         self.setStyleSheet(_QSS % self._skin)
 
         self._fonts(skin)
         self._build_vars(cfg)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, self.s_top0)
         self._build_ui()
 
         # 尺寸：舒适默认尺寸，内容超出时窗口内滚动（与 v2 同一公式）
@@ -336,6 +338,7 @@ class SettingsDialog(QDialog):
         self.crit0 = _to_int(cfg.get("critical_percent", 95), 95, 11, 99)
         self.notify0 = bool(cfg.get("notify", True))
         self.burn0 = bool(cfg.get("burn_predict", False))
+        self.s_top0 = _to_bool(cfg.get("settings_topmost", False), False)
 
     # ---------------- UI 装配 ----------------
 
@@ -815,6 +818,15 @@ class SettingsDialog(QDialog):
         right.addWidget(self.dock_len_spin)
         right.addStretch(1)
 
+        card = self._card(lay, "设置窗口", "#a88fff")
+        right = self._row(card, "设置窗口置顶",
+                          "打开后设置窗口始终浮在其它窗口之上；"
+                          "默认关闭，可被别的窗口正常遮挡")
+        self.s_top_switch = Switch(self._skin)
+        self.s_top_switch.setChecked(self.s_top0)
+        right.addWidget(self.s_top_switch)
+        right.addStretch(1)
+
     def _page_notify(self, lay):
         card = self._card(lay, "预警阈值", "#f0b34e",
                           desc="进度条、百分比与详情面板按当前档位变色")
@@ -857,9 +869,11 @@ class SettingsDialog(QDialog):
             self._buttons_row(card, (("检查更新", self.on_update, True),))
 
         card = self._card(lay, "数据文件", "#9aa3ad",
-                          desc="配置与用量历史都是本机明文文件，升级、重装都不会丢失")
+                          desc="配置与用量历史都是本机文件，升级、重装都不会丢失")
         self._info(card, "配置文件", config_path())
-        self._buttons_row(card, (("打开配置文件夹", self._open_config_dir, False),))
+        self._buttons_row(card, (("打开配置文件夹", self._open_config_dir, False),
+                                 ("导出配置", self._export_config, False),
+                                 ("导入配置", self._import_config, False)))
 
     # ---------------- 交互 ----------------
 
@@ -870,6 +884,73 @@ class SettingsDialog(QDialog):
             QDesktopServices.openUrl(QUrl.fromLocalFile(data_dir()))
         except Exception:
             pass
+
+    def _export_config(self):
+        """把 config.json 原样复制到用户选的位置。
+
+        文件里含访问密钥（v3.2.0 起为 DPAPI 密文），提示妥善保管；
+        密文只有本机用户能解开，跨机器导入时对方需要重新填密钥。"""
+        import shutil
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        try:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "导出配置", "llm-usage-widget-config.json",
+                "配置文件 (*.json)")
+            if not path:
+                return
+            shutil.copyfile(config_path(), path)
+            QMessageBox.information(
+                self, "导出配置",
+                "已导出到：\n%s\n\n注意：文件里包含访问密钥（已按本机加密），"
+                "请妥善保管，不要发给他人。" % path)
+        except Exception as e:
+            QMessageBox.warning(self, "导出配置", "导出失败：%s" % e)
+
+    def _import_config(self):
+        """导入备份的 config.json：与现有配置深合并后落盘。
+
+        密钥在本机是 DPAPI 加密存的（v3.2.0 起），其他电脑导出的密文
+        在本机解不开——导入前先探测，解不开的密钥置空并提示重新填写。
+        导入成功后关闭设置窗（窗内表单还是导入前的旧值，留着继续点
+        「保存并应用」会把导入结果覆盖回去），部分项重启后生效。"""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from core.config import (SECRET_FIELDS, deep_merge, load_config,
+                                 save_config_patch)
+        from core.secure_store import decrypt_secret, is_encrypted
+        try:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "导入配置", "", "配置文件 (*.json);;所有文件 (*)")
+            if not path:
+                return
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError("文件内容不是有效的配置（需为 JSON 对象）")
+            stale = []
+            for section, key in SECRET_FIELDS:
+                sub = data.get(section)
+                v = sub.get(key) if isinstance(sub, dict) else None
+                if isinstance(v, str) and is_encrypted(v) \
+                        and not decrypt_secret(v):
+                    stale.append((section, key))
+            merged = deep_merge(load_config(), data)
+            for section, key in stale:
+                # 解不开的密文落盘没意义（运行时解密会得到空串），置空
+                # 让供应商页显示「未配置」
+                if isinstance(merged.get(section), dict):
+                    merged[section][key] = ""
+            save_config_patch(merged)
+            msg = "已导入并应用。\n\n部分设置（开机自启、主题等）重启应用后生效。"
+            if stale:
+                msg += ("\n\n注意：导入文件中的 %s 密钥来自其他电脑，本机无法"
+                        "解密，已置空，请到「供应商与账号」页重新填写。"
+                        % "、".join({"zhipu": "智谱",
+                                     "volcano": "火山引擎"}.get(s, s)
+                                    for s, _k in stale))
+            QMessageBox.information(self, "导入配置", msg)
+            self._close()
+        except Exception as e:
+            QMessageBox.warning(self, "导入配置", "导入失败：%s" % e)
 
     def _native_hwnd(self):
         """悬浮窗的置顶守护把本窗口也重新钉住时要用原生句柄。"""
@@ -938,6 +1019,7 @@ class SettingsDialog(QDialog):
                 "region": self.v_region_edit.text().strip() or "cn-beijing",
             },
             "theme": theme,
+            "settings_topmost": bool(self.s_top_switch.isChecked()),
             "edge_dock": bool(self.edge_switch.isChecked()),
             "edge_glow": bool(self.edge_glow_switch.isChecked()),
             "dock_len": int(self.dock_len_spin.value()),

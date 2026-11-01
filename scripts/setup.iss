@@ -6,7 +6,7 @@
 #define MyAppName "额度悬浮窗"
 #define MyAppNameEn "LLM Usage Widget"
 #ifndef MyAppVersion
-  #define MyAppVersion "3.1.3"
+  #define MyAppVersion "3.2.0"
 #endif
 #define MyAppPublisher "joeyxd19"
 #define MyAppURL "https://github.com/joeyxd19/llm-usage-widget"
@@ -37,17 +37,23 @@ PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Tasks]
-Name: "autostart"; Description: "开机自动启动"; GroupDescription: "附加任务:"; Flags: unchecked
+; 「开机自动启动」不再做成安装选项：自启统一由应用内设置管理
+; （设置里写/删 %APPDATA% 启动目录的 usage_widget.vbs），避免安装器
+; 勾选状态与应用内开关两处状态不同步
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"; Flags: unchecked
 
 [Files]
 Source: "..\dist\onedir\llm-usage-widget\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\onedir\llm-usage-widget\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+; 旧版本安装时可能创建过的「开机自动启动」快捷方式，安装新版本时清掉，
+; 自启改由应用内设置统一管理
+Type: files; Name: "{userstartup}\{#MyAppName}.lnk"
+
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: autostart
 Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
@@ -126,4 +132,27 @@ begin
       Result := False;
     end;
   end;
+end;
+
+// 卸载收尾：在「卸载完成」页之后执行。
+// 1) 无条件删除应用内「开机自动启动」功能写入的 usage_widget.vbs——
+//    卸载后若残留，Windows 每次开机都会弹 VBS 脚本错误；
+// 2) 询问是否一并删除 %APPDATA%\LLM Usage Widget（config.json /
+//    history.jsonl / error.log）。默认选「否」保留数据，重装后配置无缝沿用。
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Reply: Integer;
+begin
+  if CurUninstallStep <> usPostUninstall then
+    Exit;
+
+  DeleteFile(ExpandConstant('{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\usage_widget.vbs'));
+
+  Reply := MsgBox('是否同时删除配置与历史数据？' + #13#10 + #13#10 +
+                  '%APPDATA%\LLM Usage Widget' + #13#10 +
+                  '（config.json、history.jsonl、error.log）' + #13#10 + #13#10 +
+                  '选「否」将保留数据，重装后可继续沿用。',
+                  mbConfirmation, MB_YESNO);
+  if Reply = IDYES then
+    DelTree(ExpandConstant('{userappdata}\LLM Usage Widget'), True, True, True);
 end;

@@ -1,0 +1,30 @@
+# 持续集成：语法全量编译 + 纯逻辑单测（不依赖 Windows / DPAPI / 网络）。
+# 单测不 import Qt；PySide6-Essentials 仅用于 compileall 之外的将来扩展，
+# 先装上可让 qt/* 在后续加 Qt 级测试时直接可用（offscreen 平台）。
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: pip install PySide6-Essentials pytest
+
+      - name: 语法编译检查
+        run: python -m compileall src scripts -q
+
+      - name: 单元测试
+        run: python -m pytest tests -q

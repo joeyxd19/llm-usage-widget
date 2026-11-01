@@ -12,8 +12,10 @@ import os
 import shutil
 import sys
 
+from .secure_store import decrypt_secret, encrypt_secret, is_encrypted
+
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "3.1.3"
+APP_VERSION = "3.2.0"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照，烧速预测用）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
@@ -48,6 +50,7 @@ DEFAULT_CONFIG = {
     "dock_side": "none",       # none/left/right/top/bottom（上次收起的边）
     "dock_len": 150,           # 贴边长条默认长度（px，40~240）
     "dock_hint_shown": False,  # 首次贴边收起的「把手在哪」提示已展示过
+    "settings_topmost": False,  # 设置窗口置顶（默认关：普通窗口层级，可被其它窗口遮挡）
 }
 
 SCALE_STEPS = [0.75, 0.9, 1.0, 1.15, 1.3]
@@ -138,6 +141,42 @@ def _deep_merge(dst, src):
 deep_merge = _deep_merge
 
 
+# 需要加密落盘的密钥字段 (section, key)：加载时解密、保存时加密（v3.2.0 起）
+SECRET_FIELDS = (("zhipu", "api_key"), ("volcano", "secret_access_key"))
+
+
+def _decode_secrets(cfg):
+    """把配置里的密文密钥解密成明文供运行使用（失败收敛为空串）。"""
+    for section, key in SECRET_FIELDS:
+        sub = cfg.get(section)
+        if isinstance(sub, dict) and is_encrypted(sub.get(key)):
+            sub[key] = decrypt_secret(sub[key])
+    return cfg
+
+
+def _encode_secrets(cfg, disk=None):
+    """把明文密钥加密后落盘（就地修改）。
+
+    - 占位符（"在这里填…"）/ 空值 / 已是密文：保持原样
+    - disk 为保存前的磁盘原始值：若其中已有密文且解出来与新明文一致，
+      直接沿用旧密文（DPAPI 加密不幂等，避免每次保存都无谓地换密文）
+    - 非 Windows 平台 encrypt_secret 原样返回，行为与旧版一致"""
+    for section, key in SECRET_FIELDS:
+        sub = cfg.get(section)
+        if not isinstance(sub, dict):
+            continue
+        v = sub.get(key)
+        if (not isinstance(v, str) or not v or is_placeholder(v)
+                or is_encrypted(v)):
+            continue
+        old = (disk or {}).get(section, {}).get(key) if isinstance(disk, dict) else None
+        if is_encrypted(old) and decrypt_secret(old) == v:
+            sub[key] = old
+            continue
+        sub[key] = encrypt_secret(v)
+    return cfg
+
+
 def _load_file_config():
     """只读磁盘文件里的原始配置（不合并默认值），失败返回空 dict。"""
     try:
@@ -158,21 +197,24 @@ def load_config():
     for key in ("refresh_minutes", "opacity", "ui_scale", "warn_percent",
                 "critical_percent", "notify", "burn_predict", "window_x",
                 "window_y", "theme", "edge_dock", "edge_glow", "dock_side",
-                "dock_len", "dock_hint_shown"):
+                "dock_len", "dock_hint_shown", "settings_topmost"):
         if key in user:
             cfg[key] = user[key]
-    return cfg
+    return _decode_secrets(cfg)
 
 
 def save_config_patch(patch):
     """
     增量保存：先读磁盘最新内容（用户可能刚手动编辑过），合并 patch 后写回。
     从根本上避免"运行中的旧内存配置覆盖用户刚填的密钥"。
+    密钥字段在写盘前加密（明文自动迁移为 DPAPI 密文；占位符保持原样）。
     """
     base = _load_file_config()
     if not base:
         base = json.loads(json.dumps(DEFAULT_CONFIG))
+    disk_raw = json.loads(json.dumps(base))   # 保存前的磁盘值（密钥仍是密文）
     _deep_merge(base, patch)
+    _encode_secrets(base, disk_raw)
     try:
         with open(config_path(), "w", encoding="utf-8") as f:
             json.dump(base, f, ensure_ascii=False, indent=2)

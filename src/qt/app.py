@@ -24,6 +24,23 @@ from core.config import APP_NAME, APP_VERSION, data_dir   # noqa: E402
 from qt import win32                                      # noqa: E402
 
 LOCK_NAME = "LLM_Usage_Widget_v3.lock"
+ERROR_LOG_MAX_BYTES = 1024 * 1024   # error.log 超过 1MB 轮转为 .1
+
+
+def _rotate_error_log(path, max_bytes=ERROR_LOG_MAX_BYTES):
+    """error.log 超限时轮转：删旧 .1，当前改名 .1。
+
+    异常全静默——日志轮转失败绝不能影响异常钩子本身。"""
+    try:
+        if os.path.getsize(path) < max_bytes:
+            return
+        try:
+            os.remove(path + ".1")
+        except OSError:
+            pass
+        os.replace(path, path + ".1")
+    except Exception:
+        pass
 
 
 def install_excepthook():
@@ -31,8 +48,9 @@ def install_excepthook():
 
     def _hook(exc_type, exc, tb):
         try:
-            with open(os.path.join(data_dir(), "error.log"), "a",
-                      encoding="utf-8") as f:
+            path = os.path.join(data_dir(), "error.log")
+            _rotate_error_log(path)
+            with open(path, "a", encoding="utf-8") as f:
                 f.write("\n[%s]\n" % datetime.datetime.now()
                         .strftime("%Y-%m-%d %H:%M:%S"))
                 traceback.print_exception(exc_type, exc, tb, file=f)

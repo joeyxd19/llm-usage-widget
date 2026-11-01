@@ -195,6 +195,9 @@ class UsageWidget(QWidget):
         self._refresh_timer = QTimer(self)      # 自动刷新链
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(self.refresh_async)
+        self._screen_recover_timer = QTimer(self)   # 显示器拔插后的复位抖动缓冲
+        self._screen_recover_timer.setSingleShot(True)
+        self._screen_recover_timer.timeout.connect(self._recover_window_pos)
         # ---- 配色主题 ----
         self.theme_eff = "dark"
         self.t = dict(THEMES["dark"])
@@ -223,6 +226,7 @@ class UsageWidget(QWidget):
         QTimer.singleShot(300, self.refresh_async)
         QTimer.singleShot(30000, self._silent_update_check)
         self._start_topmost_guard()
+        self._watch_screens()
         if self.dock_state == "docked":
             self._start_breathing()   # 启动即收起：把手呼吸光效立即可见
         if self._pos_reset:
@@ -1165,17 +1169,61 @@ class UsageWidget(QWidget):
         if not self._topmost_hwnd:
             self._topmost_hwnd = self._native_hwnd()
         win32.assert_topmost(self._topmost_hwnd)
-        # 设置窗是悬浮窗的子窗；重新钉住悬浮窗后再把设置窗也提到最上，
-        # 避免它被刚置顶的悬浮窗盖住
+        # 设置窗是悬浮窗的子窗；仅当用户开启「设置窗口置顶」时才把它也钉回
+        # 最上层，避免它被刚置顶的悬浮窗盖住（默认关闭：普通窗口层级）
         dlg = self._settings_open
         try:
-            if dlg is not None and dlg.isVisible():
+            if (dlg is not None and dlg.isVisible()
+                    and _to_bool(self.cfg.get("settings_topmost"), False)):
                 win32.assert_topmost(dlg._native_hwnd()
                                      if hasattr(dlg, "_native_hwnd")
                                      else int(dlg.winId()))
         except Exception:
             pass
         self._topmost_timer.start(1500)
+
+    # ---------------- 显示器拔插监听 ----------------
+
+    def _watch_screens(self):
+        """监听显示器拔插：屏幕列表变化后把窗口复位回可见区。
+
+        运行中拔掉副屏（或改分辨率）后，窗口可能留在已消失的屏幕坐标
+        上——「桌面上看不到悬浮窗」的另一来源（启动时由 app.py 的
+        validate_startup_pos 防呆，这里补上运行期间的动态复位）。"""
+        try:
+            from PySide6.QtGui import QGuiApplication
+            app = QGuiApplication.instance()
+            if app is None:
+                return
+            app.screenAdded.connect(self._on_screen_changed)
+            app.screenRemoved.connect(self._on_screen_changed)
+        except Exception:
+            pass
+
+    def _on_screen_changed(self, _screen):
+        # 抖动缓冲：拔插/分辨率切换常成对触发多条信号，QScreen 列表
+        # 短暂抖动，延后半秒只按最终状态判定一次
+        try:
+            self._screen_recover_timer.start(500)
+        except Exception:
+            pass
+
+    def _recover_window_pos(self):
+        """窗口若已不在任何屏幕可见区内，复位到主屏默认位置。"""
+        try:
+            if self.dock_state != "none":
+                return   # 贴边收起时窗口大半在屏外是常态，交给贴边逻辑
+            if not self.isVisible():
+                return
+            if pos_on_any_screen(self.x(), self.y(),
+                                 self.width(), self.height()):
+                return
+            nx, ny = default_visible_pos(self.k)
+            self.move(nx, ny)
+            self._save_window_pos()
+            self._toast("显示器变化，窗口已移回屏幕内")
+        except Exception:
+            pass
 
     def _cancel_topmost_guard(self):
         self._topmost_timer.stop()
