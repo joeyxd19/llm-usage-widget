@@ -18,7 +18,7 @@ root = fso.GetParentFolderName(scriptDir)
 exe = root & "\dist\onedir\llm-usage-widget\llm-usage-widget.exe"
 If Not fso.FileExists(exe) Then exe = root & "\release\llm-usage-widget.exe"
 If fso.FileExists(exe) Then
-    sh.Run """" & exe & """"", 0, False
+    sh.Run "\""\" & exe & "\""\"", 0, False
     WScript.Quit
 End If
 
@@ -47,4 +47,4 @@ If py = "" Then
     WScript.Quit 1
 End If
 
-sh.Run """" & py & """ """ & root & "\src\qt\app.py"""", 0, False
+sh.Run "\""\" & py & "\"" \""" & root & "\src\qt\app.py\""", 0, False
