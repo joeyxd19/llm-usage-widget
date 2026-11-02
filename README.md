@@ -53,7 +53,7 @@ python src/qt/app.py
 
 **方式三：静默启动脚本**
 
-双击 `scripts/启动.vbs`：优先启动 EXE，没有 EXE 时自动改用本机 Python 跑源码。
+双击 `scripts/启动.vbs`：优先启动构建产物 EXE（`dist/onedir/llm-usage-widget/` 或 `release/` 下），没有 EXE 时自动用本机 Python（PATH 中的 pythonw）跑 v3 源码入口 `src/qt/app.py`；两者都不可用时弹窗提示，不会静默失败。
 
 **测试与 CI**
 
