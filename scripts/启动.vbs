@@ -8,7 +8,9 @@
 ' 也不再回退到停更的 v2 入口（src\usage_widget.pyw）。
 ' 若弹窗提示文件来源，请选择"打开"
 Option Explicit
-Dim sh, fso, scriptDir, root, exe, py, exec, line
+Dim sh, fso, scriptDir, root, exe, py, exec, line, q
+' q = 英文双引号（Chr(34)），用于给命令行参数加引号，避免手写连续引号
+q = Chr(34)
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
@@ -18,7 +20,7 @@ root = fso.GetParentFolderName(scriptDir)
 exe = root & "\dist\onedir\llm-usage-widget\llm-usage-widget.exe"
 If Not fso.FileExists(exe) Then exe = root & "\release\llm-usage-widget.exe"
 If fso.FileExists(exe) Then
-    sh.Run "\""\" & exe & "\""\"", 0, False
+    sh.Run q & exe & q, 0, False
     WScript.Quit
 End If
 
@@ -47,4 +49,4 @@ If py = "" Then
     WScript.Quit 1
 End If
 
-sh.Run "\""\" & py & "\"" \""" & root & "\src\qt\app.py\""", 0, False
+sh.Run q & py & q & " " & q & root & "\src\qt\app.py" & q, 0, False
