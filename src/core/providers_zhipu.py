@@ -52,9 +52,22 @@ def fetch_zhipu(zcfg):
         result["error"] = "HTTP %s %s" % (code, msg or "查询失败")
         return result
 
-    data = body.get("data") or {}
+    # ---- 畸形响应防御：结构非预期类型时收敛为统一中文错误，不抛异常 ----
+    data = body.get("data")
+    if data is not None and not isinstance(data, dict):
+        result["error"] = "响应结构异常"
+        return result
+    data = data or {}
+    limits = data.get("limits")
+    if limits is not None and not isinstance(limits, list):
+        result["error"] = "响应结构异常"
+        return result
+    limits = limits or []
+    if any(not isinstance(l, dict) for l in limits):
+        result["error"] = "响应结构异常"
+        return result
+
     result["level"] = str(data.get("level") or "").upper()
-    limits = data.get("limits") or []
 
     tokens = [l for l in limits if l.get("type") == "TOKENS_LIMIT"]
     # 两个 TOKENS_LIMIT 靠 unit/number 显式区分（接口实测，v2.3.6）：
@@ -94,8 +107,13 @@ def fetch_zhipu(zcfg):
         total = mcp.get("usage") or 0
         used = mcp.get("currentValue") or 0
         pct = mcp.get("percentage")
+        # percentage 缺失时按 used/total 本地计算；usage/currentValue 为
+        # 字符串等其他非数值类型时安全跳过（历史版本此处会抛 TypeError）
         if pct is None and total:
-            pct = round(used * 100.0 / total, 1)
+            try:
+                pct = round(float(used) * 100.0 / float(total), 1)
+            except (TypeError, ValueError):
+                pct = None
         details = [(str(d.get("modelCode") or ""), d.get("usage") or 0)
                    for d in (mcp.get("usageDetails") or [])
                    if isinstance(d, dict)]

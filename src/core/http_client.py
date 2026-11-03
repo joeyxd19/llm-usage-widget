@@ -68,8 +68,10 @@ def _http_json_once(opener, url, headers, data, timeout):
         code = e.code
         if code in _RETRYABLE:
             retry_after = _retry_after_of(e)
-    except ValueError as e:   # 请求头/参数格式问题（如密钥误粘贴带换行）
-        return 0, "请求格式错误: %s" % e, 0.0
+    except ValueError:   # 请求头/参数格式问题（如密钥误粘贴带换行）
+        # 固定文案，不拼接异常原文：ValueError 文案会携带非法请求头内容，
+        # 即密钥原文（如 Invalid header value b'...'），拼进错误串会泄露
+        return 0, "请求格式错误：请检查 API Key 是否误粘贴了换行或特殊字符", 0.0
     except Exception as e:
         return 0, "网络错误: %s" % e, 0.0
     try:

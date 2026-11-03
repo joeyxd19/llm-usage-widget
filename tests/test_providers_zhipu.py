@@ -10,9 +10,10 @@ http_json 完全离线，不发真实请求、不依赖 DPAPI / Qt。
 - 错误响应 / 网络失败 / 非 dict 响应体的错误文案
 - 数值类型异常（字符串 / None）下"存储原样、计算路径异常"的现状
 
-已知现状（实测记录，未擅改逻辑）：畸形结构会导致未捕获异常，见文件末尾
-KnownUncaughtBehavior 文档类用例——它们断言的是"当前会抛异常"这一事实，
-不代表期望的产品行为。
+畸形结构（data / limits / limit item 非预期类型）期望收敛为
+"响应结构异常"错误而非抛未捕获异常，见文件末尾
+TestMalformedStructureConvergence；MCP usage/currentValue 为字符串
+时按安全路径计算百分比（算不出则 percent=None），见 TestTypeAnomalies。
 """
 
 import datetime
@@ -341,49 +342,74 @@ class TestTypeAnomalies(unittest.TestCase):
                                ]})
         self.assertEqual(result["mcp"]["details"], [("glm-4.6", 3), ("", 7)])
 
-    def test_mcp_usage_type_error_documented(self):
-        """现状记录：usage 或 currentValue 为字符串、percentage 缺失时，
-        本地百分比计算抛未捕获 TypeError。断言的是当前事实，
-        不是期望行为；修复与否由业务决定。"""
-        with self.assertRaises(TypeError):
-            self._limits({"type": "TIME_LIMIT", "usage": "1000",
-                          "currentValue": 250, "percentage": None,
-                          "usageDetails": []})
-        with self.assertRaises(TypeError):
-            self._limits({"type": "TIME_LIMIT", "usage": 1000,
-                          "currentValue": "250", "percentage": None,
-                          "usageDetails": []})
+    def test_mcp_string_values_safe_percent(self):
+        """usage/currentValue 为字符串、percentage 缺失时按安全路径
+        计算（可解析则算出百分比，不抛 TypeError）。"""
+        result = self._limits({"type": "TIME_LIMIT", "usage": "1000",
+                               "currentValue": 250, "percentage": None,
+                               "usageDetails": []})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mcp"]["percent"], 25.0)
+        result = self._limits({"type": "TIME_LIMIT", "usage": 1000,
+                               "currentValue": "250", "percentage": None,
+                               "usageDetails": []})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mcp"]["percent"], 25.0)
+
+    def test_mcp_unparseable_values_percent_none(self):
+        """usage/currentValue 均不可解析为数值时收敛为 percent=None，
+        不抛异常，used/total 仍原样存储。"""
+        result = self._limits({"type": "TIME_LIMIT", "usage": "abc",
+                               "currentValue": "xyz", "percentage": None,
+                               "usageDetails": []})
+        self.assertTrue(result["ok"])
+        self.assertIsNone(result["mcp"]["percent"])
+        self.assertEqual(result["mcp"]["used"], "xyz")
+        self.assertEqual(result["mcp"]["total"], "abc")
 
 
-# ---------------- 畸形结构的未捕获异常（现状记录） ----------------
+# ---------------- 畸形结构收敛 ----------------
 
-class KnownUncaughtBehavior(unittest.TestCase):
-    """以下用例记录"现有解析在畸形输入上抛未捕获异常"的事实。
+class TestMalformedStructureConvergence(unittest.TestCase):
+    """data / limits / limit item 为非预期类型时，解析收敛为统一中文
+    错误"响应结构异常"（ok=False），不得抛未捕获异常。
 
     这类结构在真实接口中未出现过（接口要么给 dict 要么 success=false），
     但契约测试的职责是把边界钉住：一旦有人改动解析代码，这些用例会
-    明确暴露行为变化，便于判断是修复还是回归。"""
+    明确暴露行为变化。"""
 
-    def test_data_not_dict_raises(self):
+    def test_data_not_dict_converges(self):
         with mock.patch.object(zp, "http_json",
                                lambda *a, **k: (200, {"success": True,
                                                       "data": "oops"})):
-            with self.assertRaises(AttributeError):
-                zp.fetch_zhipu(make_cfg())
+            result = zp.fetch_zhipu(make_cfg())
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "响应结构异常")
 
-    def test_limits_not_list_raises(self):
+    def test_limits_not_list_converges(self):
         with mock.patch.object(zp, "http_json",
                                lambda *a, **k: (200, {"success": True,
                                                       "data": {"limits": 3}})):
-            with self.assertRaises(TypeError):
-                zp.fetch_zhipu(make_cfg())
+            result = zp.fetch_zhipu(make_cfg())
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "响应结构异常")
 
-    def test_limit_item_not_dict_raises(self):
+    def test_limit_item_not_dict_converges(self):
         with mock.patch.object(zp, "http_json",
                                lambda *a, **k: (200, {"success": True,
                                                       "data": {"limits": [None]}})):
-            with self.assertRaises(AttributeError):
-                zp.fetch_zhipu(make_cfg())
+            result = zp.fetch_zhipu(make_cfg())
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "响应结构异常")
+
+    def test_limits_dict_converges(self):
+        """limits 为 dict（可迭代但元素非 dict）同样收敛，不抛异常。"""
+        with mock.patch.object(zp, "http_json",
+                               lambda *a, **k: (200, {"success": True,
+                                                      "data": {"limits": {"a": 1}}})):
+            result = zp.fetch_zhipu(make_cfg())
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "响应结构异常")
 
 
 if __name__ == "__main__":

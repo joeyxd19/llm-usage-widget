@@ -190,12 +190,22 @@ class TestMalformedResults(unittest.TestCase):
         self.assertEqual(result["windows"], [])
         self.assertEqual(result["level"], "")
 
-    def test_result_not_dict_raises_documented(self):
-        """现状记录：Result 为字符串等非 dict 时，解析抛未捕获
-        AttributeError（res.get 调用前无类型检查）。断言的是当前事实，
-        不代表期望行为；修复与否由业务决定。"""
-        with self.assertRaises(AttributeError):
-            fetch_with({"ResponseMetadata": {}, "Result": "oops"})
+    def test_result_not_dict_converges(self):
+        """Result 为字符串等非 dict 时收敛为统一中文错误（ok=False），
+        不得抛未捕获异常；Result 缺失仍按空数据成功处理。"""
+        result, _ = fetch_with({"ResponseMetadata": {}, "Result": "oops"})
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "响应结构异常")
+
+    def test_response_metadata_not_dict_converges(self):
+        result, _ = fetch_with({"ResponseMetadata": "oops", "Result": {}})
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "响应结构异常")
+
+    def test_error_entry_not_dict_converges(self):
+        result, _ = fetch_with({"ResponseMetadata": {"Error": "oops"}})
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "响应结构异常")
 
     def test_window_entry_not_dict_skipped(self):
         result = self._windows(vol_payload(AFPFiveHour="oops"))

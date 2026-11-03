@@ -29,6 +29,7 @@ from core.burn_predict import (HIST_KEY_MAP, append_history, load_history,
                                norm_epoch)
 from core.config import APP_NAME, APP_VERSION, _to_bool, _to_int, deep_merge, \
     is_placeholder, load_config, save_config_patch
+from core.refresh_status import FAIL_REMIND_STREAK, FailStreak, stale_suffix
 
 from . import detail_panel as dp
 from . import win32
@@ -145,6 +146,7 @@ class UsageWidget(QWidget):
         self.data = {"zhipu": None, "volcano": None}
         self.errors = {"zhipu": "", "volcano": ""}
         self.last_ok_time = None
+        self._fail_streak = FailStreak()   # 连续失败计数（第 3 轮提醒一次）
         self.updating = False
         self.status_text = ""
         self._placed = False
@@ -1450,13 +1452,25 @@ class UsageWidget(QWidget):
                     self.data["volcano"] = vr
                     any_ok = True
             if any_ok:
+                self._fail_streak.record(True)   # 成功即重置连续失败计数
                 self.last_ok_time = now
                 self.status_text = "更新于 %s" % now.strftime("%H:%M")
                 self._record_history()
                 self._check_notifications()
             else:
                 err = self.errors.get("zhipu") or self.errors.get("volcano") or "失败"
+                # 失败可见化：旧值已非实时，在错误行拼上距上次成功的时长；
+                # 连续第 3 轮失败 toast 提醒一次（成功后计数清零，不会刷屏）
+                stale = stale_suffix(self.last_ok_time, now)
+                if stale:
+                    for name, r in (("zhipu", zr), ("volcano", vr)):
+                        if r is not None and not r.get("ok") \
+                                and self.errors.get(name):
+                            self.errors[name] += stale
                 self.status_text = "更新失败：%s" % err[:22]
+                if self._fail_streak.record(any_ok):
+                    self._toast("已连续 %d 轮刷新失败：%s"
+                                % (FAIL_REMIND_STREAK, err[:30]))
             if self.isVisible():
                 self.redraw()
         finally:

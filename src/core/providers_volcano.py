@@ -85,9 +85,17 @@ def fetch_volcano(vcfg):
     if not isinstance(body, dict):
         result["error"] = "HTTP %s %s" % (code, str(body)[:80])
         return result
-    meta = body.get("ResponseMetadata") or {}
-    if meta.get("Error"):
-        err = meta["Error"]
+    # ---- 畸形响应防御：结构非预期类型时收敛为统一中文错误，不抛异常 ----
+    meta = body.get("ResponseMetadata")
+    if meta is not None and not isinstance(meta, dict):
+        result["error"] = "响应结构异常"
+        return result
+    meta = meta or {}
+    err = meta.get("Error")
+    if err:
+        if not isinstance(err, dict):
+            result["error"] = "响应结构异常"
+            return result
         code_s = str(err.get("Code") or "Error")
         hints = {
             "AccessDenied": "AK/SK 没有方舟查询权限：请在火山引擎控制台为该子用户添加 ArkFullAccess（或 ark:GetAFPUsage 只读）授权",
@@ -100,7 +108,11 @@ def fetch_volcano(vcfg):
             result["error"] = "%s: %s" % (code_s, (err.get("Message") or "")[:80])
         return result
 
-    res = body.get("Result") or {}
+    res = body.get("Result")
+    if res is not None and not isinstance(res, dict):
+        result["error"] = "响应结构异常"
+        return result
+    res = res or {}
     result["level"] = str(res.get("PlanType") or "")
     # 官方套餐只有 5 小时 / 周 / 月 三档限额；API 返回的 AFPDaily（今日，
     # 固定 10000）比周限额还大，永远不会成为有效约束，不展示
