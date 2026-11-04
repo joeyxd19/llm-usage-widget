@@ -173,7 +173,7 @@ def test_save_config_patch_placeholder_stays_plain(monkeypatch, tmp_path):
 
 
 def test_version_pin():
-    assert cc.APP_VERSION == "3.3.0"
+    assert cc.APP_VERSION == "3.3.1"
     assert cc.SECRET_FIELDS == (("zhipu", "api_key"),
                                 ("volcano", "secret_access_key"),
                                 ("deepseek", "api_key"))

@@ -15,7 +15,7 @@ import sys
 from .secure_store import decrypt_secret, encrypt_secret, is_encrypted
 
 APP_NAME = "额度悬浮窗"
-APP_VERSION = "3.3.0"
+APP_VERSION = "3.3.1"
 CONFIG_NAME = "config.json"
 HISTORY_NAME = "history.jsonl"   # 本地用量历史（每次刷新一条快照，烧速预测用）
 HISTORY_KEEP_DAYS = 14           # 历史保留天数
