@@ -35,6 +35,12 @@ DEFAULT_CONFIG = {
         "secret_access_key": "在这里填火山SecretAccessKey",
         "region": "cn-beijing",
     },
+    "deepseek": {
+        "enabled": True,
+        "api_key": "在这里填你的DeepSeekAPI_Key",
+        "show_spent": True,       # 详情面板显示推算消耗（官方无用量接口）
+        "experimental_usage": False,  # 实验：未文档化用量接口，可能随时变更
+    },
     "refresh_minutes": 5,
     "opacity": 0.96,
     "ui_scale": 1.0,
@@ -142,7 +148,8 @@ deep_merge = _deep_merge
 
 
 # 需要加密落盘的密钥字段 (section, key)：加载时解密、保存时加密（v3.2.0 起）
-SECRET_FIELDS = (("zhipu", "api_key"), ("volcano", "secret_access_key"))
+SECRET_FIELDS = (("zhipu", "api_key"), ("volcano", "secret_access_key"),
+                 ("deepseek", "api_key"))
 
 
 def _decode_secrets(cfg):
@@ -191,7 +198,7 @@ def load_config():
     """默认配置 + 磁盘用户配置，返回运行用完整配置。"""
     cfg = json.loads(json.dumps(DEFAULT_CONFIG))  # deep copy
     user = _load_file_config()
-    for section in ("zhipu", "volcano"):
+    for section in ("zhipu", "volcano", "deepseek"):
         if isinstance(user.get(section), dict):
             cfg[section].update(user[section])
     for key in ("refresh_minutes", "opacity", "ui_scale", "warn_percent",

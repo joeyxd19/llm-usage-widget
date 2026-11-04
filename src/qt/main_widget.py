@@ -132,7 +132,7 @@ def default_visible_pos(k=1.0):
 class _RefreshBridge(QObject):
     """工作线程 → 主线程的结果桥（跨线程信号自动排队）。"""
 
-    done = Signal(object, object, object)   # zhipu 结果, volcano 结果, 配置快照
+    done = Signal(object, object, object, object)   # zhipu, volcano, deepseek, 配置快照
 
 
 class UsageWidget(QWidget):
@@ -143,8 +143,8 @@ class UsageWidget(QWidget):
         # 窗口就绪后 toast 告知用户（配置里的新位置已由 app.py 落盘）
         self._pos_reset = bool(pos_reset)
         self.cfg = load_config()
-        self.data = {"zhipu": None, "volcano": None}
-        self.errors = {"zhipu": "", "volcano": ""}
+        self.data = {"zhipu": None, "volcano": None, "deepseek": None}
+        self.errors = {"zhipu": "", "volcano": "", "deepseek": ""}
         self.last_ok_time = None
         self._fail_streak = FailStreak()   # 连续失败计数（第 3 轮提醒一次）
         self.updating = False
@@ -153,8 +153,11 @@ class UsageWidget(QWidget):
         self._drag_offset = None
         self._moved = False
         # ---- 历史与通知 ----
+        # 烧速预测与 DeepSeek 消耗推算共用本地历史快照
         self._hist = (load_history(8 * 86400)
-                      if self.cfg.get("burn_predict", False) else [])
+                      if (self.cfg.get("burn_predict", False)
+                          or self.cfg.get("deepseek", {}).get("enabled", True))
+                      else [])
         self._notify_state = {}                # "prov:窗口" → 预警去重状态
         self._hwnd_cache = 0
 
@@ -1235,7 +1238,10 @@ class UsageWidget(QWidget):
     def _needs_setup(self):
         z = self.cfg.get("zhipu", {})
         v = self.cfg.get("volcano", {})
-        return is_placeholder(z.get("api_key")) and is_placeholder(v.get("access_key_id"))
+        d = self.cfg.get("deepseek", {})
+        return (is_placeholder(z.get("api_key"))
+                and is_placeholder(v.get("access_key_id"))
+                and is_placeholder(d.get("api_key")))
 
     def open_settings(self):
         from .settings_dialog import SettingsDialog
@@ -1258,8 +1264,10 @@ class UsageWidget(QWidget):
     def apply_settings(self, patch):
         save_config_patch(patch)             # 增量写盘
         deep_merge(self.cfg, patch)          # 同步内存
-        if self.cfg.get("burn_predict", False) and not self._hist:
-            self._hist = load_history(8 * 86400)   # 刚打开烧速预测：补读历史
+        if (self.cfg.get("burn_predict", False)
+                or self.cfg.get("deepseek", {}).get("enabled", True)) \
+                and not self._hist:
+            self._hist = load_history(8 * 86400)   # 刚打开烧速预测/DeepSeek：补读历史
         self._restore_alpha()
         self._metrics()
         self._pick_fonts()
@@ -1407,6 +1415,7 @@ class UsageWidget(QWidget):
             snap = {}
         zcfg = dict(snap.get("zhipu", {}) or {})
         vcfg = dict(snap.get("volcano", {}) or {})
+        dcfg = dict(snap.get("deepseek", {}) or {})
 
         def _safe(fn, arg):
             def run():
@@ -1421,16 +1430,19 @@ class UsageWidget(QWidget):
             tasks["zhipu"] = _safe(_fetch_zhipu, zcfg)
         if vcfg.get("enabled", True):
             tasks["volcano"] = _safe(_fetch_volcano, vcfg)
+        if dcfg.get("enabled", True):
+            tasks["deepseek"] = _safe(_fetch_deepseek, dcfg)
         out = {}
         if tasks:
-            # 两家供应商并行请求，刷新等待时间减半
+            # 各供应商并行请求，刷新等待时间减半
             with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
                 futs = {name: pool.submit(fn) for name, fn in tasks.items()}
                 for name, fut in futs.items():
                     out[name] = fut.result()
-        self._bridge.done.emit(out.get("zhipu"), out.get("volcano"), snap)
+        self._bridge.done.emit(out.get("zhipu"), out.get("volcano"),
+                               out.get("deepseek"), snap)
 
-    def _apply_refresh(self, zr, vr, snap=None):
+    def _apply_refresh(self, zr, vr, dr, snap=None):
         # 无论本轮处理是否异常，finally 里都要排下一轮刷新，
         # 否则任何一次绘制/通知抛异常都会让自动刷新链永久断裂
         try:
@@ -1451,6 +1463,11 @@ class UsageWidget(QWidget):
                 if vr.get("ok"):
                     self.data["volcano"] = vr
                     any_ok = True
+            if dr is not None:
+                self.errors["deepseek"] = "" if dr.get("ok") else dr.get("error", "失败")
+                if dr.get("ok"):
+                    self.data["deepseek"] = dr
+                    any_ok = True
             if any_ok:
                 self._fail_streak.record(True)   # 成功即重置连续失败计数
                 self.last_ok_time = now
@@ -1458,12 +1475,15 @@ class UsageWidget(QWidget):
                 self._record_history()
                 self._check_notifications()
             else:
-                err = self.errors.get("zhipu") or self.errors.get("volcano") or "失败"
+                err = (self.errors.get("zhipu")
+                       or self.errors.get("volcano")
+                       or self.errors.get("deepseek") or "失败")
                 # 失败可见化：旧值已非实时，在错误行拼上距上次成功的时长；
                 # 连续第 3 轮失败 toast 提醒一次（成功后计数清零，不会刷屏）
                 stale = stale_suffix(self.last_ok_time, now)
                 if stale:
-                    for name, r in (("zhipu", zr), ("volcano", vr)):
+                    for name, r in (("zhipu", zr), ("volcano", vr),
+                                    ("deepseek", dr)):
                         if r is not None and not r.get("ok") \
                                 and self.errors.get(name):
                             self.errors[name] += stale
@@ -1510,15 +1530,23 @@ class UsageWidget(QWidget):
         return out
 
     def _record_history(self):
-        """把本次各窗口百分比写入本地历史，并刷新内存快照。
-        烧速预测关闭时不记录，避免无意义的落盘。"""
-        if not self.cfg.get("burn_predict", False):
-            return
+        """把本次窗口百分比与 DeepSeek 余额写入本地历史，并刷新内存快照。
+
+        窗口百分比仅烧速预测开启时记录；DeepSeek 余额（dsb/dsc）只要
+        DeepSeek 已启用就记录——官方无用量接口，消耗靠余额时间序列推算。
+        """
         rec = {"ts": time.time()}
-        for prov, nm, pct, _rst in self._usage_snapshot():
-            key = HIST_KEY_MAP.get((prov, nm))
-            if key and pct is not None:
-                rec[key] = round(min(100.0, max(0.0, pct)), 1)
+        if self.cfg.get("burn_predict", False):
+            for prov, nm, pct, _rst in self._usage_snapshot():
+                key = HIST_KEY_MAP.get((prov, nm))
+                if key and pct is not None:
+                    rec[key] = round(min(100.0, max(0.0, pct)), 1)
+        ds = self.data.get("deepseek")
+        if ds and ds.get("ok"):
+            b = ds.get("balance")
+            if isinstance(b, dict) and isinstance(b.get("total"), (int, float)):
+                rec["dsb"] = b["total"]
+                rec["dsc"] = b.get("currency") or "CNY"
         if len(rec) > 1:
             append_history(rec)
             self._hist = load_history(8 * 86400)
@@ -1545,5 +1573,6 @@ class UsageWidget(QWidget):
 
 
 # 延迟导入供应商函数，便于单独替换/测试
+from core.providers_deepseek import fetch_deepseek as _fetch_deepseek  # noqa: E402
 from core.providers_volcano import fetch_volcano as _fetch_volcano  # noqa: E402
 from core.providers_zhipu import fetch_zhipu as _fetch_zhipu  # noqa: E402

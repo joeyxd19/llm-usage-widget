@@ -1,6 +1,7 @@
 # LLM 用量悬浮窗
 
-Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan** 与 **火山引擎 Agent Plan** 的额度用量。
+Windows 桌面常驻悬浮窗，一眼掌握 **智谱 GLM Coding Plan**、**火山引擎 Agent Plan**
+与 **DeepSeek 开放平台**账户的额度用量。
 
 [![CI](https://github.com/joeyxd19/llm-usage-widget/actions/workflows/ci.yml/badge.svg)](https://github.com/joeyxd19/llm-usage-widget/actions/workflows/ci.yml)
 
@@ -24,7 +25,7 @@ EXE 由 PyInstaller 打包，内嵌完整 Python 运行环境；密钥经 **Wind
 
 ## 功能特性
 
-- **双供应商监控**：智谱（5 小时 / 本周 / 近 30·15·7 天 token 用量（可按需开关）/ MCP 每月额度）+ 火山（5 小时 / 本周 / 本月）
+- **多供应商监控**：智谱（5 小时 / 本周 / 近 30·15·7 天 token 用量（可按需开关）/ MCP 每月额度）+ 火山（5 小时 / 本周 / 本月）+ DeepSeek（账户余额 / 推算消耗）
 - **详情面板**：大字百分比、进度条、重置倒计时与绝对时间、分模型用量明细
 - **密钥加密落盘**：API Key / Secret 用 Windows DPAPI 加密后写入配置（v3.2.0 起），旧明文配置自动迁移；设置页支持**导出 / 导入配置**（跨机器导入时解不开的密文自动置空并提示）
 - **安全自动更新**：应用内检查 GitHub Releases，下载后按发布 manifest 的 sha256 **校验完整性**，安装前自动备份、失败自动**回滚**；支持增量更新包（delta），失败回退完整包
@@ -88,6 +89,13 @@ python scripts/generate_manifest.py dist/onedir/llm-usage-widget X.X.X 上个版
 |---|---|---|
 | 智谱 | API Key | [智谱开放平台](https://open.bigmodel.cn/) → API Keys |
 | 火山引擎 | AccessKey ID / Secret | [火山引擎控制台](https://console.volcengine.com/) → 右上角头像 → API 访问密钥（AKLT 开头，需 `ArkFullAccess` 或 `ark:GetAFPUsage` 只读权限） |
+| DeepSeek | API Key | [DeepSeek 开放平台](https://platform.deepseek.com/) → 左侧「API keys」页面创建（sk- 开头）。余额查询免费，仅消耗余额接口的极少量调用费用 |
+
+> DeepSeek 说明：官方**未提供**用量/消耗查询接口（仅网页「用量信息」可手工导出
+> CSV），悬浮窗里的「消耗」由本地余额变化**推算**（余额下降累计为消耗，充值/赠送
+> 单独记为入账；刚启用或程序长时间未运行时会标注「数据不完整」）。设置里可选打开
+> 「实验：官方用量接口」——调用未在官方文档公开的 `/v1/usage`，可能随时变更或对
+> 部分账户不可用，失败自动回退推算。多币种按币种分行展示，不做合计。
 
 > 密钥经 DPAPI 加密后保存，绑定当前 Windows 账号；源码运行的数据文件在源码目录
 > （`config.json` 已被 `.gitignore` 排除）。软件不经过任何第三方服务器。

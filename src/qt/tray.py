@@ -179,6 +179,13 @@ class TrayIcon(QSystemTrayIcon):
             tip += "\n火山 " + txt_v
         elif w.errors.get("volcano"):
             tip += "\n火山：" + w.errors["volcano"][:30]
+        dd = w.data.get("deepseek")
+        if dd and dd.get("ok"):
+            b = dd.get("balance") or {}
+            tip += "\nDeepSeek %.2f %s" % (b.get("total") or 0.0,
+                                           b.get("currency") or "")
+        elif w.errors.get("deepseek"):
+            tip += "\nDeepSeek：" + w.errors["deepseek"][:30]
         if w.last_ok_time:
             tip += "\n更新于 " + w.last_ok_time.strftime("%H:%M:%S")
         self.setToolTip(tip)

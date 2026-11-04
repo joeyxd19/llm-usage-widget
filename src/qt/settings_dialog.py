@@ -22,12 +22,12 @@ from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QCheckBox,
 from core.config import (APP_NAME, APP_VERSION, SCALE_SHORT, SCALE_STEPS,
                          _to_bool, _to_int, config_path, data_dir)
 
-from .theme import C_ACCENT_V, C_ACCENT_Z, C_GREEN, C_RED, C_YELLOW
+from .theme import C_ACCENT_D, C_ACCENT_V, C_ACCENT_Z, C_GREEN, C_RED, C_YELLOW
 
 # 五个功能页（顺序即导航顺序）：key -> (标题, 副标题, 主题色点)
 SET_PAGES = [
     ("providers",  "供应商与账号",
-     "填写智谱 / 火山引擎的访问密钥，不用的供应商直接关闭", C_ACCENT_Z),
+     "填写智谱 / 火山 / DeepSeek 的访问密钥，不用的供应商直接关闭", C_ACCENT_Z),
     ("refresh",    "刷新与预测",
      "数据拉取节奏、烧速预测与网络请求", "#45c1a5"),
     ("appearance", "外观与主题",
@@ -316,6 +316,10 @@ class SettingsDialog(QDialog):
         self.v_ak0 = str(vcfg.get("access_key_id", ""))
         self.v_sk0 = str(vcfg.get("secret_access_key", ""))
         self.v_region0 = str(vcfg.get("region", "cn-beijing"))
+        dcfg = cfg.get("deepseek", {})
+        self.d_en = bool(dcfg.get("enabled", True))
+        self.d_key0 = str(dcfg.get("api_key", ""))
+        self.d_exp0 = _to_bool(dcfg.get("experimental_usage", False), False)
         theme_val = str(cfg.get("theme", "auto") or "auto")
         if theme_val not in ("auto", "dark", "light"):
             theme_val = "auto"
@@ -740,7 +744,26 @@ class SettingsDialog(QDialog):
         self.v_region_edit = self._field(card, "地域", self.v_region0,
                                          hint="一般保持 cn-beijing")
 
-        note = QLabel("密钥只保存在本机 config.json，不经过任何第三方服务器；"
+        self.d_en_sw = Switch(s)
+        self.d_en_sw.setChecked(self.d_en)
+        card = self._card(lay, "DeepSeek 开放平台", C_ACCENT_D,
+                          switch=self.d_en_sw,
+                          desc="账户余额与消耗情况（官方无用量接口，消耗由"
+                               "本地余额变化推算）")
+        self.d_key_edit = self._field(
+            card, "API Key", self.d_key0, secret=True,
+            hint="DeepSeek 开放平台 → 左侧「API keys」页面创建（sk- 开头）")
+        self.d_exp_sw = Switch(s)
+        self.d_exp_sw.setChecked(self.d_exp0)
+        right = self._row(
+            card, "实验：官方用量接口",
+            "调用未在官方文档公开的 /v1/usage 获取按模型消耗，未文档化，"
+            "可能随时变更或对部分账户不可用（失败自动回退推算）")
+        right.addWidget(self.d_exp_sw)
+        right.addStretch(1)
+
+        note = QLabel("密钥只保存在本机 config.json（Windows 下经 DPAPI 加密），"
+                      "不经过任何第三方服务器；"
                       "不需要的供应商可在卡片右上角关闭，悬浮窗即隐藏该卡片。",
                       self)
         note.setFont(self.f_hint)
@@ -945,7 +968,8 @@ class SettingsDialog(QDialog):
                 msg += ("\n\n注意：导入文件中的 %s 密钥来自其他电脑，本机无法"
                         "解密，已置空，请到「供应商与账号」页重新填写。"
                         % "、".join({"zhipu": "智谱",
-                                     "volcano": "火山引擎"}.get(s, s)
+                                     "volcano": "火山引擎",
+                                     "deepseek": "DeepSeek"}.get(s, s)
                                     for s, _k in stale))
             QMessageBox.information(self, "导入配置", msg)
             self._close()
@@ -1003,6 +1027,25 @@ class SettingsDialog(QDialog):
         crit = int(self.crit_spin.value())
         if warn >= crit:  # 保证黄 < 红
             warn, crit = crit - 1, crit
+        # ---- DeepSeek API Key 校验（占位符/空值/误粘贴换行给中文提示）----
+        d_key_raw = self.d_key_edit.text()
+        d_key = d_key_raw.strip()
+        if self.d_en_sw.isChecked():
+            from PySide6.QtWidgets import QMessageBox
+            if "\n" in d_key_raw or "\r" in d_key_raw:
+                QMessageBox.warning(
+                    self, "DeepSeek API Key",
+                    "API Key 中包含换行，可能是误粘贴了多行内容，"
+                    "请重新粘贴后再保存。")
+                return
+            if not d_key or "这里填" in d_key:
+                ret = QMessageBox.question(
+                    self, "DeepSeek 未配置",
+                    "已启用 DeepSeek 但未填写 API Key，保存后余额卡片将一直"
+                    "提示「未配置 API Key」。\n\n仍要保存吗？",
+                    QMessageBox.Yes | QMessageBox.No)
+                if ret != QMessageBox.Yes:
+                    return
         patch = {
             "zhipu": {
                 "enabled": bool(self.z_en_sw.isChecked()),
@@ -1017,6 +1060,11 @@ class SettingsDialog(QDialog):
                 "access_key_id": self.v_ak_edit.text().strip(),
                 "secret_access_key": self.v_sk_edit.text().strip(),
                 "region": self.v_region_edit.text().strip() or "cn-beijing",
+            },
+            "deepseek": {
+                "enabled": bool(self.d_en_sw.isChecked()),
+                "api_key": d_key,
+                "experimental_usage": bool(self.d_exp_sw.isChecked()),
             },
             "theme": theme,
             "settings_topmost": bool(self.s_top_switch.isChecked()),

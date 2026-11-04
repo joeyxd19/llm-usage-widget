@@ -12,6 +12,7 @@ C_YELLOW    = "#fbbf24"
 C_RED       = "#f87171"
 C_ACCENT_Z  = "#7aa2ff"   # 智谱品牌蓝
 C_ACCENT_V  = "#ff7a90"   # 火山品牌红粉
+C_ACCENT_D  = "#4d6bfe"   # DeepSeek 品牌蓝
 
 # 深浅两套主题（键值与 v2 相同）
 THEMES = {
@@ -19,7 +20,7 @@ THEMES = {
         "card": C_CARD, "line": C_CARD_LINE, "text": C_TEXT,
         "dim": C_TEXT_DIM, "track": C_TRACK,
         "ok": C_GREEN, "warn": C_YELLOW, "crit": C_RED,
-        "tag_z": "#2a3550", "tag_v": "#45242e",
+        "tag_z": "#2a3550", "tag_v": "#45242e", "tag_d": "#232c54",
         # 贴边把手专用 1px 描边：比卡片描边亮一档，收起后也能和桌面区分
         "handle_edge": "#7e89a8",
     },
@@ -27,7 +28,7 @@ THEMES = {
         "card": "#ffffff", "line": "#d8dce2", "text": "#202124",
         "dim": "#5f6368", "track": "#e6e8ec",
         "ok": "#16a34a", "warn": "#d97706", "crit": "#dc2626",
-        "tag_z": "#e8eeff", "tag_v": "#ffe9ee",
+        "tag_z": "#e8eeff", "tag_v": "#ffe9ee", "tag_d": "#e7ebff",
         "handle_edge": "#96a0b5",
     },
 }

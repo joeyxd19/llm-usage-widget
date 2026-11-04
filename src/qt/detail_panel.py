@@ -11,8 +11,9 @@ from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
 
 from core.burn_predict import fmt_reset_info, predict_text
 from core.config import _to_bool, _to_int
+from core.providers_deepseek import balance_spent
 
-from .theme import C_ACCENT_V, C_ACCENT_Z
+from .theme import C_ACCENT_D, C_ACCENT_V, C_ACCENT_Z
 
 
 # --------------------------------------------------------------------------
@@ -114,6 +115,8 @@ def tag_bg(t, accent):
         return t["tag_z"]
     if accent == C_ACCENT_V:
         return t["tag_v"]
+    if accent == C_ACCENT_D:
+        return t["tag_d"]
     return t["track"]
 
 
@@ -135,6 +138,7 @@ def layout_blocks(data, errors, cfg, hist, k):
     blocks = [{"t": "head", "h": max(20, int(24 * k)) + int(6 * k)}]
     z_on = cfg.get("zhipu", {}).get("enabled", True)
     v_on = cfg.get("volcano", {}).get("enabled", True)
+    d_on = cfg.get("deepseek", {}).get("enabled", True)
 
     def prov(name, accent, level):
         blocks.append({"t": "prov", "name": name, "accent": accent,
@@ -206,9 +210,68 @@ def layout_blocks(data, errors, cfg, hist, k):
                            "text": "⚠ " + (errors.get("volcano")
                                             or "暂无数据，右键 → 立即刷新")})
 
-    if not z_on and not v_on:
+    if d_on:
+        dd = data.get("deepseek") or {}
+        prov("DeepSeek 平台", C_ACCENT_D, "")
+        if dd.get("ok"):
+            stat_h = line_h + int(6 * k)
+            # 多币种逐条列出（不同币种分行，不做合计）；显示币种代码
+            for idx, b in enumerate(dd.get("balances") or []):
+                txt = "%.2f %s" % (b.get("total") or 0.0,
+                                   b.get("currency") or "—")
+                granted = b.get("granted")
+                if isinstance(granted, (int, float)) and granted > 0:
+                    txt += " · 赠 %.2f" % granted
+                blocks.append({"t": "stat",
+                               "label": "账户余额" if idx == 0
+                                        else "余额（%s）" % b.get("currency"),
+                               "text": txt, "h": stat_h})
+            if (dd.get("balances") or [{}])[0].get("is_available") is False:
+                blocks.append({"t": "stat", "label": "账户状态",
+                               "text": "暂不可用（可能欠费或未充值）",
+                               "h": stat_h})
+            # 消耗展示：优先实验性官方用量，失败/关闭则本地余额推算
+            usage = dd.get("usage")
+            dcfg = cfg.get("deepseek", {})
+            if usage:
+                cur = usage.get("currency") or "CNY"
+                blocks.append({
+                    "t": "stat", "label": "近 24 小时消耗（官方·实验）",
+                    "text": "%.2f %s" % (usage.get("today_cost", 0.0), cur),
+                    "h": stat_h})
+                wt = "%.2f %s" % (usage.get("week_cost", 0.0), cur)
+                models = usage.get("week_models") or []
+                if models:
+                    wt += " · " + " ".join(
+                        "%s %.2f" % (m, c) for m, c in models[:2])
+                blocks.append({
+                    "t": "stat", "label": "近 7 天消耗（官方·实验）",
+                    "text": wt, "h": stat_h})
+            elif dcfg.get("show_spent", True):
+                for label, r in (("近 24 小时消耗（推算）",
+                                  balance_spent(hist, 24)),
+                                 ("近 7 天消耗（推算）",
+                                  balance_spent(hist, 24 * 7))):
+                    if r:
+                        txt = "%.2f %s" % (r["spent"], r["currency"])
+                        if r.get("partial"):
+                            txt += " · 数据不完整"
+                        blocks.append({"t": "stat", "label": label,
+                                       "text": txt, "h": stat_h})
+                r7 = balance_spent(hist, 24 * 7)
+                if r7 and r7.get("credit"):
+                    blocks.append({"t": "stat", "label": "期间入账（推算）",
+                                   "text": "+%.2f %s" % (r7["credit"],
+                                                         r7["currency"]),
+                                   "h": stat_h})
+        else:
+            blocks.append({"t": "err", "h": line_h + int(4 * k),
+                           "text": "⚠ " + (errors.get("deepseek")
+                                            or "暂无数据，右键 → 立即刷新")})
+
+    if not z_on and not v_on and not d_on:
         blocks.append({"t": "err", "h": line_h + int(6 * k),
-                       "text": "两个供应商均已停用（右键 → 设置）"})
+                       "text": "所有供应商均已停用（右键 → 设置）"})
 
     # 供应商分隔线（首个供应商除外，行距计入自身高度）
     seen_prov = False
