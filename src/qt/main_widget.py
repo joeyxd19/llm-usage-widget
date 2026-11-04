@@ -156,7 +156,7 @@ class UsageWidget(QWidget):
         # 烧速预测与 DeepSeek 消耗推算共用本地历史快照
         self._hist = (load_history(8 * 86400)
                       if (self.cfg.get("burn_predict", False)
-                          or self.cfg.get("deepseek", {}).get("enabled", True))
+                          or self.cfg.get("deepseek", {}).get("enabled", False))
                       else [])
         self._notify_state = {}                # "prov:窗口" → 预警去重状态
         self._hwnd_cache = 0
@@ -1265,7 +1265,7 @@ class UsageWidget(QWidget):
         save_config_patch(patch)             # 增量写盘
         deep_merge(self.cfg, patch)          # 同步内存
         if (self.cfg.get("burn_predict", False)
-                or self.cfg.get("deepseek", {}).get("enabled", True)) \
+                or self.cfg.get("deepseek", {}).get("enabled", False)) \
                 and not self._hist:
             self._hist = load_history(8 * 86400)   # 刚打开烧速预测/DeepSeek：补读历史
         self._restore_alpha()
@@ -1430,7 +1430,7 @@ class UsageWidget(QWidget):
             tasks["zhipu"] = _safe(_fetch_zhipu, zcfg)
         if vcfg.get("enabled", True):
             tasks["volcano"] = _safe(_fetch_volcano, vcfg)
-        if dcfg.get("enabled", True):
+        if dcfg.get("enabled", False):
             tasks["deepseek"] = _safe(_fetch_deepseek, dcfg)
         out = {}
         if tasks:
@@ -1534,6 +1534,8 @@ class UsageWidget(QWidget):
 
         窗口百分比仅烧速预测开启时记录；DeepSeek 余额（dsb/dsc）只要
         DeepSeek 已启用就记录——官方无用量接口，消耗靠余额时间序列推算。
+        同时记录 Key 指纹（dsf，sha256 前 8 位，不可反推原 Key），
+        balance_spent 据此分段账本：换 Key/换账户后的余额差额不记账。
         """
         rec = {"ts": time.time()}
         if self.cfg.get("burn_predict", False):
@@ -1547,6 +1549,8 @@ class UsageWidget(QWidget):
             if isinstance(b, dict) and isinstance(b.get("total"), (int, float)):
                 rec["dsb"] = b["total"]
                 rec["dsc"] = b.get("currency") or "CNY"
+                rec["dsf"] = key_fingerprint(
+                    (self.cfg.get("deepseek", {}) or {}).get("api_key"))
         if len(rec) > 1:
             append_history(rec)
             self._hist = load_history(8 * 86400)
@@ -1574,5 +1578,6 @@ class UsageWidget(QWidget):
 
 # 延迟导入供应商函数，便于单独替换/测试
 from core.providers_deepseek import fetch_deepseek as _fetch_deepseek  # noqa: E402
+from core.providers_deepseek import key_fingerprint  # noqa: E402
 from core.providers_volcano import fetch_volcano as _fetch_volcano  # noqa: E402
 from core.providers_zhipu import fetch_zhipu as _fetch_zhipu  # noqa: E402

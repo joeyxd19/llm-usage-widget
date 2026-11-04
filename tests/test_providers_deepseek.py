@@ -13,10 +13,14 @@
 - 金额为字符串（官方口径）与非法金额
 - 错误信息与结果中不得出现 API Key 明文
 - balance_spent 账本模型：下降累计消耗、上涨记入账（无负消耗）、
-  观测缺口标记数据不完整、样本不足保持安静
-- /v1/usage 实验接口：默认关闭不请求；开启后 200 与 404 两条路径
+  观测缺口标记数据不完整、样本不足保持安静；按 Key 指纹（dsf）分段
+  记账（换 Key 跨账户差额丢弃、指纹缺失的旧记录视为同一未知账户）、
+  负余额样本点跳过不记账
+- /v1/usage 实验接口：默认关闭不请求；单次 7 天请求按 date 分组拆
+  今日/近 7 天；开启后 200 与 404 两条路径
 """
 
+import datetime
 import json
 import sys
 import unittest
@@ -60,6 +64,7 @@ class FakeHttp:
         self.result = result
         self.usage_result = usage_result
         self.calls = []
+        self.timeouts = []   # 与 calls 一一对应，记录每次请求的 timeout
 
     @staticmethod
     def _as_resp(r):
@@ -67,6 +72,7 @@ class FakeHttp:
 
     def __call__(self, url, headers=None, data=None, timeout=20):
         self.calls.append((url, headers, data))
+        self.timeouts.append(timeout)
         if "/v1/usage" in url:
             if isinstance(self.usage_result, Exception):
                 raise self.usage_result
@@ -319,6 +325,107 @@ class TestBalanceSpent(unittest.TestCase):
         r = dsk.balance_spent(recs, 24)
         self.assertEqual(r["currency"], "USD")
 
+    def test_negative_balance_points_skipped(self):
+        """欠费（余额 < 0）样本点整点丢弃：欠费段的巨额差额不记账。"""
+        import time
+        now = time.time()
+        # 100 → -5（欠费）→ 98：丢弃 -5 点后只剩 100→98
+        recs = [{"ts": now - 23 * 3600, "dsb": 100.0, "dsc": "CNY"},
+                {"ts": now - 10 * 3600, "dsb": -5.0, "dsc": "CNY"},
+                {"ts": now - 3600, "dsb": 98.0, "dsc": "CNY"}]
+        r = dsk.balance_spent(recs, 24 * 7)
+        # 105 的「回升」绝不能算入账；只有首尾差额 2.0 记为消耗
+        self.assertEqual(r["spent"], 2.0)
+        self.assertEqual(r["credit"], 0.0)
+        self.assertTrue(r["partial"])   # 丢点导致观测缺口 → 数据不完整
+
+
+# ---------------- Key 指纹分段账本 ----------------
+
+class TestKeyFingerprint(unittest.TestCase):
+
+    def test_fingerprint_is_short_hex_no_key_leak(self):
+        fp = dsk.key_fingerprint(KEY)
+        self.assertEqual(len(fp), 8)
+        int(fp, 16)   # 必须是十六进制
+        self.assertNotIn(KEY, fp)
+        self.assertNotIn(KEY, json.dumps(
+            {"dsf": fp}, ensure_ascii=False))
+
+    def test_fingerprint_deterministic_and_distinct(self):
+        self.assertEqual(dsk.key_fingerprint(KEY),
+                         dsk.key_fingerprint(KEY))
+        self.assertNotEqual(dsk.key_fingerprint(KEY),
+                            dsk.key_fingerprint("sk-other-key"))
+        self.assertEqual(dsk.key_fingerprint(""), "")
+        self.assertEqual(dsk.key_fingerprint(None), "")
+
+
+def hist_recs_fp(pts):
+    """[(相对小时, 余额, 指纹或 None), ...] → 历史快照列表（乱序）。
+    指纹为 None 表示旧记录缺失 dsf 字段（模拟升级前的历史数据）。"""
+    import time
+    now = time.time()
+    recs = []
+    for h, bal, fp in pts:
+        rec = {"ts": now - h * 3600.0, "dsb": bal, "dsc": "CNY"}
+        if fp is not None:
+            rec["dsf"] = fp
+        recs.append(rec)
+    recs.reverse()
+    return recs
+
+
+class TestBalanceSpentFingerprintSegments(unittest.TestCase):
+
+    def test_same_fingerprint_still_counts(self):
+        """同指纹（同一账户）正常记账。"""
+        recs = hist_recs_fp([(23, 100, "aaaa1111"), (0, 90, "aaaa1111")])
+        r = dsk.balance_spent(recs, 24)
+        self.assertEqual(r["spent"], 10.0)
+        self.assertEqual(r["credit"], 0.0)
+
+    def test_key_change_no_phantom_spent_or_credit(self):
+        """换 Key（跨指纹）：余额差额既不算消耗也不算入账。"""
+        recs = hist_recs_fp([(23, 100, "aaaa1111"), (0, 90, "bbbb2222")])
+        r = dsk.balance_spent(recs, 24)
+        self.assertEqual(r["spent"], 0.0)
+        self.assertEqual(r["credit"], 0.0)
+
+    def test_key_change_topup_not_credit(self):
+        """换 Key 后余额上涨（新账户充值）：不得算成旧账户的入账。"""
+        recs = hist_recs_fp([(23, 90, "aaaa1111"), (0, 200, "bbbb2222")])
+        r = dsk.balance_spent(recs, 24)
+        self.assertEqual(r["credit"], 0.0)
+        self.assertEqual(r["spent"], 0.0)
+
+    def test_missing_fingerprint_treated_as_same_unknown_account(self):
+        """旧记录无指纹 → 视为同一未知账户（空指纹段），仍可推算。"""
+        recs = hist_recs_fp([(23, 100, None), (0, 90, None)])
+        r = dsk.balance_spent(recs, 24)
+        self.assertEqual(r["spent"], 10.0)
+
+    def test_missing_then_new_fingerprint_segments_split(self):
+        """换 Key 后新记录带指纹：与旧的无指纹段自然分段，跨段差额丢弃。"""
+        recs = hist_recs_fp([(23, 100, None), (12, 95, None),
+                             (0, 40, "bbbb2222")])
+        r = dsk.balance_spent(recs, 24)
+        # 95→40 属于新账户首笔观测差额，丢弃；仅旧段 100→95 记账
+        self.assertEqual(r["spent"], 5.0)
+        self.assertEqual(r["credit"], 0.0)
+
+    def test_segment_mixed_debits_only_within_fingerprint(self):
+        """多段混合：各指纹段内独立记账，跨段差额全部丢弃。"""
+        recs = hist_recs_fp([
+            (30, 100, "aaaa1111"),
+            (26, 97, "aaaa1111"),    # 旧账户消耗 3
+            (20, 150, "bbbb2222"),   # 换 Key（97→150 差额丢弃）
+            (16, 145, "bbbb2222"),   # 新账户消耗 5
+        ])
+        r = dsk.balance_spent(recs, 24 * 7)
+        self.assertEqual(r["spent"], 8.0)
+        self.assertEqual(r["credit"], 0.0)
+
 
 # ---------------- /v1/usage 实验接口 ----------------
 
@@ -326,11 +433,18 @@ def usage_payload(records):
     return {"data": records}
 
 
-def usage_record(model="deepseek-chat", cents=123, date="2026-11-04"):
+def _utc_today():
+    return datetime.datetime.now(datetime.timezone.utc).date()
+
+
+def usage_record(model="deepseek-chat", cents=123, date=None):
+    """date 缺省用真实 UTC 今天（fetch_deepseek 内部按当天拆分组）。"""
     return {"id": "r1", "model_name": model, "total_tokens": 1000,
             "prompt_tokens": 800, "input_cache_hit_tokens": 0,
             "input_cache_miss_tokens": 800, "completion_tokens": 200,
-            "cost_in_cents": cents, "date": date, "request_count": 3}
+            "cost_in_cents": cents,
+            "date": date or _utc_today().strftime("%Y-%m-%d"),
+            "request_count": 3}
 
 
 class TestUsageExperimental(unittest.TestCase):
@@ -341,7 +455,8 @@ class TestUsageExperimental(unittest.TestCase):
         self.assertIsNone(result["usage"])
         self.assertEqual(len(fake.calls), 1)   # 只有余额请求
 
-    def test_200_both_queries(self):
+    def test_200_single_request_for_both_windows(self):
+        """今日 + 近 7 天合并为一次 7 天区间请求（省一半请求/404 风险）。"""
         u = usage_payload([usage_record(cents=123)])
         result, fake = fetch_with(
             balance_payload(), cfg=make_cfg(experimental_usage=True),
@@ -354,9 +469,58 @@ class TestUsageExperimental(unittest.TestCase):
                          [("deepseek-chat", 1.23)])
         self.assertEqual(usage["currency"], "CNY")
         usage_calls = [c for c in fake.calls if "/v1/usage" in c[0]]
-        self.assertEqual(len(usage_calls), 2)   # 今日 + 近 7 天两次查询
+        self.assertEqual(len(usage_calls), 1)   # 只发一次请求
         q = usage_calls[0][0].split("?")[1]
-        self.assertIn("start_date=", q) and self.assertIn("end_date=", q)
+        today = _utc_today()
+        self.assertIn("start_date=" + (today - datetime.timedelta(days=6)
+                                       ).strftime("%Y-%m-%d"), q)
+        self.assertIn("end_date=" + today.strftime("%Y-%m-%d"), q)
+
+    def test_usage_timeout_is_short(self):
+        """实验接口显式传短超时（10s），不拖累整轮刷新。"""
+        _, fake = fetch_with(
+            balance_payload(), cfg=make_cfg(experimental_usage=True),
+            usage_result=usage_payload([usage_record(cents=1)]))
+        usage_idx = [i for i, c in enumerate(fake.calls)
+                     if "/v1/usage" in c[0]]
+        self.assertEqual(len(usage_idx), 1)
+        self.assertEqual(fake.timeouts[usage_idx[0]],
+                         dsk.USAGE_TIMEOUT)
+        self.assertEqual(fake.timeouts[usage_idx[0]], 10)
+
+    def test_usage_splits_today_from_older_days(self):
+        """7 天区间内按 date 分组：今日 = 今日分组，近 7 天 = 全部。"""
+        today = _utc_today()
+        older = (today - datetime.timedelta(days=3)).strftime("%Y-%m-%d")
+        u = usage_payload([
+            usage_record(model="deepseek-chat", cents=100),      # 今天
+            usage_record(model="deepseek-chat", cents=50),       # 今天
+            usage_record(model="deepseek-reasoner", cents=300, date=older),
+            usage_record(model="deepseek-reasoner", cents=200, date=older),
+        ])
+        result, _ = fetch_with(
+            balance_payload(), cfg=make_cfg(experimental_usage=True),
+            usage_result=u)
+        usage = result["usage"]
+        self.assertEqual(usage["today_cost"], 1.5)
+        self.assertEqual(usage["today_models"], [("deepseek-chat", 1.5)])
+        self.assertEqual(usage["week_cost"], 6.5)
+        self.assertEqual(usage["week_models"],
+                         [("deepseek-reasoner", 5.0), ("deepseek-chat", 1.5)])
+
+    def test_usage_today_abs_means_zero_not_error(self):
+        """区间有效但今日无记录：今日消耗为 0，近 7 天照常合计。"""
+        older = (_utc_today() - datetime.timedelta(days=2)
+                 ).strftime("%Y-%m-%d")
+        u = usage_payload([usage_record(cents=500, date=older)])
+        result, _ = fetch_with(
+            balance_payload(), cfg=make_cfg(experimental_usage=True),
+            usage_result=u)
+        usage = result["usage"]
+        self.assertIsNotNone(usage)
+        self.assertEqual(usage["today_cost"], 0.0)
+        self.assertEqual(usage["today_models"], [])
+        self.assertEqual(usage["week_cost"], 5.0)
 
     def test_usage_404_silent_fallback(self):
         result, _ = fetch_with(

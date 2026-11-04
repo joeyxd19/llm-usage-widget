@@ -36,7 +36,7 @@ DEFAULT_CONFIG = {
         "region": "cn-beijing",
     },
     "deepseek": {
-        "enabled": True,
+        "enabled": False,         # 默认关闭：需要 DeepSeek 用户在设置中手动启用
         "api_key": "在这里填你的DeepSeekAPI_Key",
         "show_spent": True,       # 详情面板显示推算消耗（官方无用量接口）
         "experimental_usage": False,  # 实验：未文档化用量接口，可能随时变更

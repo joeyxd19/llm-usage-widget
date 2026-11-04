@@ -89,11 +89,12 @@ python scripts/generate_manifest.py dist/onedir/llm-usage-widget X.X.X 上个版
 |---|---|---|
 | 智谱 | API Key | [智谱开放平台](https://open.bigmodel.cn/) → API Keys |
 | 火山引擎 | AccessKey ID / Secret | [火山引擎控制台](https://console.volcengine.com/) → 右上角头像 → API 访问密钥（AKLT 开头，需 `ArkFullAccess` 或 `ark:GetAFPUsage` 只读权限） |
-| DeepSeek | API Key | [DeepSeek 开放平台](https://platform.deepseek.com/) → 左侧「API keys」页面创建（sk- 开头）。余额查询免费，仅消耗余额接口的极少量调用费用 |
+| DeepSeek | API Key | [DeepSeek 开放平台](https://platform.deepseek.com/) → 左侧「API keys」页面创建（sk- 开头）。余额查询免费，仅消耗余额接口的极少量调用费用。**默认关闭**，需在设置中勾选「启用 DeepSeek 开放平台」 |
 
 > DeepSeek 说明：官方**未提供**用量/消耗查询接口（仅网页「用量信息」可手工导出
 > CSV），悬浮窗里的「消耗」由本地余额变化**推算**（余额下降累计为消耗，充值/赠送
-> 单独记为入账；刚启用或程序长时间未运行时会标注「数据不完整」）。设置里可选打开
+> 单独记为入账；换 API Key 后按 Key 分段记账，跨账户差额不计入；刚启用或程序长
+> 时间未运行时会标注「数据不完整」）。设置里可选打开
 > 「实验：官方用量接口」——调用未在官方文档公开的 `/v1/usage`，可能随时变更或对
 > 部分账户不可用，失败自动回退推算。多币种按币种分行展示，不做合计。
 
@@ -136,16 +137,18 @@ llm-usage-widget/
 │   │   ├── settings_dialog.py  # 设置窗口（五页，含导出/导入配置）
 │   │   ├── tray.py         # 系统托盘
 │   │   └── ...             # theme / toast / update_ui / win32
-│   ├── core/               # 业务逻辑（纯标准库，可单测）
-│   │   ├── config.py       # 配置读写（脏值容错、密钥加解密）
-│   │   ├── secure_store.py # Windows DPAPI 加密
-│   │   ├── http_client.py  # 直连/代理 + 指数退避重试
-│   │   ├── providers_zhipu.py / providers_volcano.py
-│   │   ├── burn_predict.py # 本地历史 + 烧速预测
-│   │   ├── notify.py       # 系统通知
-│   │   ├── autostart.py    # 开机自启 VBS
-│   │   └── updater.py      # 应用内自动更新（校验和 + 备份回滚）
-│   └── usage_widget.pyw    # v2 tkinter 旧版入口（停更保留，勿用于新部署）
+│   └── core/               # 业务逻辑（纯标准库，可单测）
+│       ├── config.py       # 配置读写（脏值容错、密钥加解密）
+│       ├── secure_store.py # Windows DPAPI 加密
+│       ├── http_client.py  # 直连/代理 + 指数退避重试
+│       ├── providers_zhipu.py / providers_volcano.py
+│       ├── burn_predict.py # 本地历史 + 烧速预测
+│       ├── notify.py       # 系统通知
+│       ├── autostart.py    # 开机自启 VBS
+│       └── updater.py      # 应用内自动更新（校验和 + 备份回滚）
+├── legacy/                 # v2 tkinter 旧版（停更保留，勿用于新部署，不参与 CI 编译与打包）
+│   ├── usage_widget.pyw    # v2 旧版入口
+│   └── updater.py          # v2 自动更新器（v3 已由 src/core/updater.py 取代）
 ├── tests/                  # 纯逻辑单测（pytest，不依赖 Qt）
 ├── docs/
 │   ├── 使用说明.md          # 完整使用说明与常见问题

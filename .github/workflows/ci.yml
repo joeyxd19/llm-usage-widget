@@ -24,6 +24,8 @@ jobs:
         run: pip install PySide6-Essentials pytest
 
       - name: 语法编译检查
+        # 只检查 src 与 scripts：legacy/ 是 v2 死代码存档（git mv 保留历史），
+        # 不在运行与打包路径上，刻意不纳入编译检查
         run: python -m compileall src scripts -q
 
       - name: 单元测试

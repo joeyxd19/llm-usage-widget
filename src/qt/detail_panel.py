@@ -138,7 +138,7 @@ def layout_blocks(data, errors, cfg, hist, k):
     blocks = [{"t": "head", "h": max(20, int(24 * k)) + int(6 * k)}]
     z_on = cfg.get("zhipu", {}).get("enabled", True)
     v_on = cfg.get("volcano", {}).get("enabled", True)
-    d_on = cfg.get("deepseek", {}).get("enabled", True)
+    d_on = cfg.get("deepseek", {}).get("enabled", False)
 
     def prov(name, accent, level):
         blocks.append({"t": "prov", "name": name, "accent": accent,
@@ -248,17 +248,18 @@ def layout_blocks(data, errors, cfg, hist, k):
                     "t": "stat", "label": "近 7 天消耗（官方·实验）",
                     "text": wt, "h": stat_h})
             elif dcfg.get("show_spent", True):
-                for label, r in (("近 24 小时消耗（推算）",
-                                  balance_spent(hist, 24)),
-                                 ("近 7 天消耗（推算）",
-                                  balance_spent(hist, 24 * 7))):
+                # balance_spent 是全量历史扫描：24h 与 7 天各算一次，
+                # 结果存局部变量复用（入账复用 7 天结果），避免重复扫描
+                r24 = balance_spent(hist, 24)
+                r7 = balance_spent(hist, 24 * 7)
+                for label, r in (("近 24 小时消耗（推算）", r24),
+                                 ("近 7 天消耗（推算）", r7)):
                     if r:
                         txt = "%.2f %s" % (r["spent"], r["currency"])
                         if r.get("partial"):
                             txt += " · 数据不完整"
                         blocks.append({"t": "stat", "label": label,
                                        "text": txt, "h": stat_h})
-                r7 = balance_spent(hist, 24 * 7)
                 if r7 and r7.get("credit"):
                     blocks.append({"t": "stat", "label": "期间入账（推算）",
                                    "text": "+%.2f %s" % (r7["credit"],

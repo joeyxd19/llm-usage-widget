@@ -317,7 +317,7 @@ class SettingsDialog(QDialog):
         self.v_sk0 = str(vcfg.get("secret_access_key", ""))
         self.v_region0 = str(vcfg.get("region", "cn-beijing"))
         dcfg = cfg.get("deepseek", {})
-        self.d_en = bool(dcfg.get("enabled", True))
+        self.d_en = bool(dcfg.get("enabled", False))
         self.d_key0 = str(dcfg.get("api_key", ""))
         self.d_exp0 = _to_bool(dcfg.get("experimental_usage", False), False)
         theme_val = str(cfg.get("theme", "auto") or "auto")

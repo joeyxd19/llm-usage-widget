@@ -24,6 +24,7 @@ Authorization: Bearer <API Key>
 """
 
 import datetime
+import hashlib
 import time
 import urllib.parse
 
@@ -44,6 +45,17 @@ def _to_money(v):
         return round(float(v), 2)
     except (TypeError, ValueError):
         return None
+
+
+def key_fingerprint(api_key):
+    """API Key 的短指纹（sha256 前 8 位十六进制），仅用于余额账本分段。
+
+    历史快照里只存指纹、绝不存原 Key（指纹不可反推 Key）；
+    换 Key / 换账户时指纹变化，balance_spent 据此丢弃跨账户差额。
+    空 Key 返回空串（与旧历史记录缺失指纹的记账行为一致）。"""
+    if not api_key:
+        return ""
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:8]
 
 
 def fetch_deepseek(dcfg):
@@ -128,15 +140,21 @@ def _iso_day(d):
     return d.strftime("%Y-%m-%d")
 
 
+USAGE_TIMEOUT = 10   # 实验接口未承诺 SLA：超时即放弃，静默回退余额推算
+
+
 def _usage_query(key, start_day, end_day):
-    """单次用量查询，返回 data 记录列表；任何非 200 / 畸形结构返回 None。"""
+    """单次用量查询，返回 data 记录列表；任何非 200 / 畸形结构返回 None。
+
+    超时显式收紧为 USAGE_TIMEOUT 秒（http_json 默认 20 秒且带指数
+    退避重试，实验接口不值得等这么久）。"""
     qs = urllib.parse.urlencode({"start_date": _iso_day(start_day),
                                  "end_date": _iso_day(end_day)})
     code, body = http_json(USAGE_URL + "?" + qs, headers={
         "Authorization": "Bearer " + key,
         "Accept": "application/json",
         "User-Agent": "usage-widget/" + APP_VERSION,
-    })
+    }, timeout=USAGE_TIMEOUT)
     if code != 200 or not isinstance(body, dict):
         return None
     data = body.get("data")
@@ -144,11 +162,13 @@ def _usage_query(key, start_day, end_day):
 
 
 def _aggregate_usage(records):
-    """按模型聚合消耗金额（cost_in_cents 单位为分，币种实测为人民币）。
+    """聚合消耗记录（cost_in_cents 单位为分，币种实测为人民币）。
     畸形记录安全跳过；一条有效记录都没有视为结构异常，返回 None。
-    返回 (总额, {模型: 金额})。"""
+    返回 (总额, {模型: 金额}, {日期: 金额})——date 维度供
+    fetch_usage_official 拆「今日/近 7 天」，避免二次请求。"""
     total = 0.0
     models = {}
+    days = {}
     parsed = 0
     for rec in records:
         if not isinstance(rec, dict):
@@ -159,39 +179,58 @@ def _aggregate_usage(records):
             continue
         parsed += 1
         model = str(rec.get("model_name") or "未知模型")
+        day = str(rec.get("date") or "")
         total += cost
         models[model] = round(models.get(model, 0.0) + cost, 2)
+        days[day] = round(days.get(day, 0.0) + cost, 2)
     if not parsed:
         return None
-    return round(total, 2), models
+    return round(total, 2), models, days
 
 
 def fetch_usage_official(key, now=None):
-    """实验性：GET /v1/usage 查询「今日（UTC）」与「近 7 天」消耗。
+    """实验性：GET /v1/usage 一次查询「近 7 天」，本地按 date 拆出今日。
+
+    接口本身支持日期区间，原「今日 + 近 7 天」两次串行请求浪费且
+    翻倍触发 404/限流，现合并为一次请求：start=今天(UTC)-6 天、
+    end=今天(UTC)，聚合后今日 = date 等于今日分组的合计，
+    近 7 天 = 全部合计。
 
     未在官方文档公开，可能随时变更或对部分账户 404 —— 任何失败
     （网络、401、404、畸形结构）一律返回 None，调用方静默回退
-    余额推算，绝不向用户弹错误。"""
+    余额推算，绝不向用户弹错误、也不混进余额错误行。"""
     now = now or datetime.datetime.now(datetime.timezone.utc)
     today = now.date()
-    day_records = _usage_query(key, today, today)
-    if day_records is None:
+    records = _usage_query(key, today - datetime.timedelta(days=6), today)
+    if records is None:
         return None
-    week_records = _usage_query(key, today - datetime.timedelta(days=6), today)
-    if week_records is None:
+    agg = _aggregate_usage(records)
+    if agg is None:
         return None
-    day_agg = _aggregate_usage(day_records)
-    week_agg = _aggregate_usage(week_records)
-    if day_agg is None or week_agg is None:
-        return None
-    (today_cost, today_models), (week_cost, week_models) = day_agg, week_agg
+    week_cost, week_models, by_day = agg
+    today_cost = by_day.get(_iso_day(today))
+    if today_cost is None:
+        # 区间有效但今日无记录：今日消耗为 0（而非结构异常）
+        today_cost = 0.0
+        today_models = []
+    else:
+        # 今日模型明细按 date 分组重算：从原始记录再过一遍今日部分
+        tm = {}
+        for rec in records:
+            if not isinstance(rec, dict) or str(rec.get("date") or "") != _iso_day(today):
+                continue
+            try:
+                cost = float(rec.get("cost_in_cents") or 0) / 100.0
+            except (TypeError, ValueError):
+                continue
+            m = str(rec.get("model_name") or "未知模型")
+            tm[m] = round(tm.get(m, 0.0) + cost, 2)
+        today_models = sorted(tm.items(), key=lambda kv: -kv[1])
     return {
-        "today_cost": today_cost,
-        "today_models": sorted(today_models.items(),
-                               key=lambda kv: -kv[1]),
+        "today_cost": round(today_cost, 2),
+        "today_models": today_models,
         "week_cost": week_cost,
-        "week_models": sorted(week_models.items(),
-                              key=lambda kv: -kv[1]),
+        "week_models": sorted(week_models.items(), key=lambda kv: -kv[1]),
         "currency": "CNY",   # cost_in_cents 实测口径，未经官方确认
     }
 
@@ -208,6 +247,11 @@ def balance_spent(hist, hours, now=None):
     账本模型（借鉴 whale-widget accounting.mjs）：
     - 相邻两次余额观测，余额下降累计为消耗、上涨单独记为「入账」，
       不冲减、不产生负消耗——充值不会被算成负数或拉低消耗；
+    - 账本按 Key 指纹（dsf 字段）分段：跨指纹（换 Key/换账户）的余额
+      差额既不算消耗也不算入账——那是两个账户的钱，不是消费；
+      指纹缺失的旧记录视为同一未知账户（空指纹），同段内仍可推算；
+    - 余额 < 0 的样本（欠费期）整点丢弃：欠费差额不是消耗，充值回正
+      的差额也不是入账，欠费段整体不记账；
     - 相邻观测缺口或窗口起点缺口超过 10 分钟时 partial=True，
       表示该段消耗未被观测到（真实消耗只会更多）；
     - UI 必须标注「基于余额变化推算」。
@@ -223,9 +267,10 @@ def balance_spent(hist, hours, now=None):
         ts, v = rec.get("ts"), rec.get("dsb")
         if not isinstance(ts, (int, float)) or not isinstance(v, (int, float)):
             continue
-        if ts < cutoff or ts > now:
+        if ts < cutoff or ts > now or v < 0:
             continue
-        pts.append((float(ts), float(v), str(rec.get("dsc") or "")))
+        pts.append((float(ts), float(v), str(rec.get("dsc") or ""),
+                    str(rec.get("dsf") or "")))
     if len(pts) < 2:
         return None
     pts.sort(key=lambda p: p[0])
@@ -235,6 +280,8 @@ def balance_spent(hist, hours, now=None):
     for i in range(1, len(pts)):
         if pts[i][0] - pts[i - 1][0] > OBSERVATION_GAP_SECONDS:
             partial = True
+        if pts[i][3] != pts[i - 1][3]:
+            continue   # 跨账户（Key 指纹变化）：差额丢弃，不记账
         delta = pts[i - 1][1] - pts[i][1]
         if delta > 0:
             spent += delta

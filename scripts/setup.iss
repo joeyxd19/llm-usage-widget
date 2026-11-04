@@ -61,7 +61,7 @@ Filename: "{app}\{#MyAppExeName}"; Description: "立即启动 {#MyAppName}"; Fla
 
 [Code]
 // 安装前检测「额度悬浮窗」是否正在运行：正在运行就询问用户是否结束它。
-// 检测用程序自身的单实例互斥体（与 src/usage_widget.pyw 中的名字保持一致），
+// 检测用程序自身的单实例互斥体（与 src/qt/win32.py 中的名字保持一致），
 // 比按进程名查更准确，也不会误杀同名的其他程序。
 const
   AppMutexName = 'UsageWidget_ZV_SingleInstance';

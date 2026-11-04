@@ -5,7 +5,7 @@
 '   2) release\llm-usage-widget.exe（手动放置副本，沿用旧版习惯、改用真实文件名）
 '   3) 本机 Python 的 pythonw.exe（PATH 中查找）运行 v3 源码入口 src\qt\app.py
 ' 找不到 EXE 且找不到 Python 时弹窗提示，不再静默失败，
-' 也不再回退到停更的 v2 入口（src\usage_widget.pyw）。
+' 也不再回退到停更的 v2 入口（legacy\usage_widget.pyw）。
 ' 若弹窗提示文件来源，请选择"打开"
 Option Explicit
 Dim sh, fso, scriptDir, root, exe, py, exec, line, q
