@@ -215,19 +215,30 @@ def layout_blocks(data, errors, cfg, hist, k):
         prov("DeepSeek 平台", C_ACCENT_D, "")
         if dd.get("ok"):
             stat_h = line_h + int(6 * k)
-            # 多币种逐条列出（不同币种分行，不做合计）；显示币种代码
-            for idx, b in enumerate(dd.get("balances") or []):
-                txt = "%.2f %s" % (b.get("total") or 0.0,
-                                   b.get("currency") or "—")
+            stale = bool(dd.get("stale"))
+            # 多币种逐条列出（不同币种分行，不做合计）。标签恒带币种代码：
+            # 官网只展示账户币种的「总余额」，不带币种会与充值/赠送余额混淆
+            for b in dd.get("balances") or []:
+                cur = b.get("currency") or "—"
+                txt = "%.2f %s" % (b.get("total") or 0.0, cur)
+                # 总余额 = 充值 + 赠送：官网分栏展示，这里一并给出便于核对
+                parts = []
+                topped = b.get("topped_up")
                 granted = b.get("granted")
-                if isinstance(granted, (int, float)) and granted > 0:
-                    txt += " · 赠 %.2f" % granted
-                blocks.append({"t": "stat",
-                               "label": "账户余额" if idx == 0
-                                        else "余额（%s）" % b.get("currency"),
+                if isinstance(topped, (int, float)):
+                    parts.append("充 %.2f" % topped)
+                if isinstance(granted, (int, float)):
+                    parts.append("赠 %.2f" % granted)
+                if parts:
+                    txt += " · " + " · ".join(parts)
+                if stale:
+                    txt += " · 非实时"
+                blocks.append({"t": "stat", "strong": True,
+                               "label": "总余额（%s）" % cur,
                                "text": txt, "h": stat_h})
             if (dd.get("balances") or [{}])[0].get("is_available") is False:
-                blocks.append({"t": "stat", "label": "账户状态",
+                blocks.append({"t": "stat", "strong": True,
+                               "label": "账户状态",
                                "text": "暂不可用（可能欠费或未充值）",
                                "h": stat_h})
             # 消耗展示：优先实验性官方用量，失败/关闭则本地余额推算
@@ -236,7 +247,8 @@ def layout_blocks(data, errors, cfg, hist, k):
             if usage:
                 cur = usage.get("currency") or "CNY"
                 blocks.append({
-                    "t": "stat", "label": "近 24 小时消耗（官方·实验）",
+                    "t": "stat", "strong": True,
+                    "label": "近 24 小时消耗（官方·实验）",
                     "text": "%.2f %s" % (usage.get("today_cost", 0.0), cur),
                     "h": stat_h})
                 wt = "%.2f %s" % (usage.get("week_cost", 0.0), cur)
@@ -245,7 +257,8 @@ def layout_blocks(data, errors, cfg, hist, k):
                     wt += " · " + " ".join(
                         "%s %.2f" % (m, c) for m, c in models[:2])
                 blocks.append({
-                    "t": "stat", "label": "近 7 天消耗（官方·实验）",
+                    "t": "stat", "strong": True,
+                    "label": "近 7 天消耗（官方·实验）",
                     "text": wt, "h": stat_h})
             elif dcfg.get("show_spent", True):
                 # balance_spent 是全量历史扫描：24h 与 7 天各算一次，
@@ -258,10 +271,12 @@ def layout_blocks(data, errors, cfg, hist, k):
                         txt = "%.2f %s" % (r["spent"], r["currency"])
                         if r.get("partial"):
                             txt += " · 数据不完整"
-                        blocks.append({"t": "stat", "label": label,
+                        blocks.append({"t": "stat", "strong": True,
+                                       "label": label,
                                        "text": txt, "h": stat_h})
                 if r7 and r7.get("credit"):
-                    blocks.append({"t": "stat", "label": "期间入账（推算）",
+                    blocks.append({"t": "stat", "strong": True,
+                                   "label": "期间入账（推算）",
                                    "text": "+%.2f %s" % (r7["credit"],
                                                          r7["currency"]),
                                    "h": stat_h})
@@ -411,10 +426,16 @@ def paint_detail(p, w, h, blocks, pad, t, cfg, fonts, radius, status_right,
                 y += det_h
             y += int(9 * k)
         elif bt == "stat":
-            # 单行统计（左标签右数值），无进度条、无重置时间
+            # 单行统计（左标签右数值），无进度条、无重置时间。
+            # strong：与上方百分比行同一字号/字重（fonts["pct"]，即
+            # _pick_fonts 里的 mk(11, True)），供 DeepSeek 余额/消耗等
+            # 主数值使用；标签仍用 f_text/dim，与百分比行的标签一致
             cy = y + b["h"] / 2.0
-            _draw_text(p, pad, cy, b["label"], f_text, t["dim"])
-            _draw_text(p, w - pad, cy, b["text"], f_text, t["dim"], "r")
+            f_val = f_pct if b.get("strong") else f_text
+            c_val = t["text"] if b.get("strong") else t["dim"]
+            _draw_text(p, pad, cy, b["label"], f_text,
+                       t["text"] if b.get("strong") else t["dim"])
+            _draw_text(p, w - pad, cy, b["text"], f_val, c_val, "r")
             y += b["h"]
         elif bt == "err":
             _draw_text(p, pad, y + b["h"] / 2.0, b["text"][:34], f_small,

@@ -1468,6 +1468,10 @@ class UsageWidget(QWidget):
                 if dr.get("ok"):
                     self.data["deepseek"] = dr
                     any_ok = True
+                elif isinstance(self.data.get("deepseek"), dict):
+                    # 本轮失败时保留上轮余额（避免闪空），但必须标记非实时，
+                    # 否则界面上的旧数字与官网对不上且看不出是缓存值
+                    self.data["deepseek"]["stale"] = True
             if any_ok:
                 self._fail_streak.record(True)   # 成功即重置连续失败计数
                 self.last_ok_time = now
@@ -1544,7 +1548,7 @@ class UsageWidget(QWidget):
                 if key and pct is not None:
                     rec[key] = round(min(100.0, max(0.0, pct)), 1)
         ds = self.data.get("deepseek")
-        if ds and ds.get("ok"):
+        if ds and ds.get("ok") and not ds.get("stale"):
             b = ds.get("balance")
             if isinstance(b, dict) and isinstance(b.get("total"), (int, float)):
                 rec["dsb"] = b["total"]

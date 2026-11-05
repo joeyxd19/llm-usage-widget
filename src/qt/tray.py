@@ -181,9 +181,14 @@ class TrayIcon(QSystemTrayIcon):
             tip += "\n火山：" + w.errors["volcano"][:30]
         dd = w.data.get("deepseek")
         if dd and dd.get("ok"):
-            b = dd.get("balance") or {}
-            tip += "\nDeepSeek %.2f %s" % (b.get("total") or 0.0,
-                                           b.get("currency") or "")
+            # 与详情面板同一口径：多币种逐条列出、不做合计，标签带币种代码；
+            # 本轮刷新失败时保留的旧余额标「非实时」，避免被当成当前余额
+            tag = "（非实时）" if dd.get("stale") else ""
+            for b in (dd.get("balances") or []):
+                tip += "\nDeepSeek 余额 %s %.2f %s" % (
+                    b.get("currency") or "—", b.get("total") or 0.0, tag)
+            if (dd.get("balances") or [{}])[0].get("is_available") is False:
+                tip += "\nDeepSeek 账户暂不可用（可能欠费或未充值）"
         elif w.errors.get("deepseek"):
             tip += "\nDeepSeek：" + w.errors["deepseek"][:30]
         if w.last_ok_time:
