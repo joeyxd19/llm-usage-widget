@@ -44,17 +44,26 @@ SKINS = {
         "bg": "#0f1115", "nav": "#12151a", "nav_hi": "#1a1e26",
         "nav_act": "#25314e", "card": "#171a20", "card_line": "#242833",
         "line": "#22262e", "text": "#eceff4", "dim": "#9aa3b2",
-        "hint": "#6b7382", "input": "#10131a", "input_line": "#2a2f3a",
+        # hint 提亮：原 #6b7382 在 #171a20 上仅约 3.5:1，12px 小字发灰
+        "hint": "#878fa0", "input": "#10131a", "input_line": "#2a2f3a",
         "accent": "#6d8dff", "accent_hi": "#86a1ff",
+        "accent_press": "#5b7bf0", "accent_muted": "#333c52",
         "on_accent": "#0b1226", "knob": "#f2f4f8", "thumb": "#2c313c",
+        # 按钮三态底色（独立于输入框，避免按钮与输入框糊成一片）
+        "btn": "#1b1f27", "btn_hi": "#232833", "btn_press": "#14171d",
+        "btn_line": "#2c323d", "btn_line_hi": "#3a4150",
     },
     "light": {
         "bg": "#f4f5f8", "nav": "#eceef2", "nav_hi": "#e0e3ea",
         "nav_act": "#dfe6fb", "card": "#ffffff", "card_line": "#e3e6ec",
         "line": "#e7e9ee", "text": "#1b1e24", "dim": "#555d6b",
-        "hint": "#7d8492", "input": "#f9fafc", "input_line": "#d5d9e0",
+        # hint 加深：#7d8492 在白底约 3.9:1，压到 4.8:1
+        "hint": "#6b7280", "input": "#f9fafc", "input_line": "#d5d9e0",
         "accent": "#4059d8", "accent_hi": "#3549c0",
+        "accent_press": "#2c3da8", "accent_muted": "#bcc6e6",
         "on_accent": "#ffffff", "knob": "#ffffff", "thumb": "#c9cdd6",
+        "btn": "#ffffff", "btn_hi": "#f1f3f8", "btn_press": "#e6e9f1",
+        "btn_line": "#d5d9e0", "btn_line_hi": "#c2c8d4",
     },
 }
 
@@ -76,31 +85,56 @@ QLineEdit, QSpinBox {
 QLineEdit:focus, QSpinBox:focus { border-color: %(accent)s; }
 QSpinBox::up-button, QSpinBox::down-button {
     width: 15px; border: none; background: transparent; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+    background: %(btn_hi)s; border-radius: 4px; }
 QSpinBox::up-arrow {
     border-left: 4px solid transparent; border-right: 4px solid transparent;
     border-bottom: 5px solid %(dim)s; width: 0; height: 0; }
 QSpinBox::down-arrow {
     border-left: 4px solid transparent; border-right: 4px solid transparent;
     border-top: 5px solid %(dim)s; width: 0; height: 0; }
+/* 次要操作：中性填充 + 细描边，与卡片描边同色系；
+   min-width 统一 76px、min-height 按 12px 字号 + 上下 padding 给足余量，
+   避免深浅主题下按钮随文字长短高低不齐 */
 QPushButton {
-    background: %(input)s; color: %(text)s;
-    border: 1px solid %(input_line)s; border-radius: 8px;
-    padding: 7px 16px; }
-QPushButton:hover { background: %(nav_hi)s; }
-QPushButton:pressed { background: %(input_line)s; }
+    background: %(btn)s; color: %(text)s;
+    border: 1px solid %(btn_line)s; border-radius: 8px;
+    padding: 7px 16px; min-width: 76px; min-height: 20px; }
+QPushButton:hover {
+    background: %(btn_hi)s; border-color: %(btn_line_hi)s; }
+QPushButton:pressed { background: %(btn_press)s; }
+QPushButton:focus { border-color: %(accent)s; }
+QPushButton:disabled {
+    background: %(btn)s; color: %(hint)s; border-color: %(btn_line)s; }
+/* 主操作：品牌色实心，唯一使用 accent 背景的按钮层级 */
 QPushButton[primary="true"] {
     background: %(accent)s; color: %(on_accent)s;
     border-color: %(accent)s; font-weight: 600; }
-QPushButton[primary="true"]:hover { background: %(accent_hi)s; }
+QPushButton[primary="true"]:hover {
+    background: %(accent_hi)s; border-color: %(accent_hi)s; }
+QPushButton[primary="true"]:pressed {
+    background: %(accent_press)s; border-color: %(accent_press)s; }
+QPushButton[primary="true"]:focus { border-color: %(text)s; }
+QPushButton[primary="true"]:disabled {
+    background: %(accent_muted)s; color: %(hint)s;
+    border-color: %(accent_muted)s; }
+/* 分段选择器：覆写全局 min-width，否则窄屏 pills 会被撑成等宽方块 */
 QPushButton[pill="true"] {
     background: %(input)s; color: %(dim)s;
     border: 1px solid %(input_line)s; border-radius: 7px;
-    padding: 5px 12px; }
-QPushButton[pill="true"]:hover { color: %(text)s; }
+    padding: 5px 12px; min-width: 0; min-height: 0; font-weight: normal; }
+QPushButton[pill="true"]:hover {
+    background: %(btn_hi)s; color: %(text)s; border-color: %(btn_line_hi)s; }
+QPushButton[pill="true"]:pressed { background: %(btn_press)s; }
+QPushButton[pill="true"]:focus { border-color: %(accent)s; }
+QPushButton[pill="true"]:disabled { color: %(hint)s; }
 QPushButton[pill="true"]:checked {
     background: %(accent)s; color: %(on_accent)s;
     border-color: %(accent)s; font-weight: 600; }
 QPushButton[pill="true"]:checked:hover { color: %(on_accent)s; }
+QToolTip {
+    background: %(card)s; color: %(text)s;
+    border: 1px solid %(card_line)s; padding: 4px 8px; }
 QCheckBox { color: %(dim)s; spacing: 7px; background: transparent; }
 QCheckBox:hover { color: %(text)s; }
 QCheckBox::indicator {
@@ -158,13 +192,16 @@ class Switch(QAbstractButton):
 # --------------------------------------------------------------------------
 
 class NavButton(QFrame):
-    def __init__(self, skin, key, label, hue, on_pick, parent=None):
+    def __init__(self, skin, key, label, hue, on_pick, parent=None, font=None):
         super().__init__(parent)
         self._skin = skin
         self._key = key
         self._on_pick = on_pick
         self._hover = False
         self._active = False
+        # 选择器必须带 objectName：QFrame 类型选择器会连带命中子 QLabel
+        # （QLabel 继承 QFrame），在导航文字背后画出直角色块
+        self.setObjectName("navItem")
         self.setCursor(Qt.PointingHandCursor)
         lay = QHBoxLayout(self)
         lay.setContentsMargins(14, 9, 12, 9)
@@ -174,6 +211,10 @@ class NavButton(QFrame):
         dot.setStyleSheet("background: %s; border-radius: 4px;" % hue)
         lay.addWidget(dot)
         self._label = QLabel(label, self)
+        # v3.3.2 之前这里漏了 setFont，导航文字一直退回系统默认 Segoe UI 9pt，
+        # 与右侧卡片文字字体/字号不一致——这是"字体看着怪"的直接来源之一
+        if font is not None:
+            self._label.setFont(font)
         lay.addWidget(self._label, 1)
         self._sync()
 
@@ -184,16 +225,19 @@ class NavButton(QFrame):
     def _sync(self):
         s = self._skin
         if self._active:
-            self.setStyleSheet("QFrame { background: %s; border-radius: 8px; }"
-                               % s["nav_act"])
-            self._label.setStyleSheet("color: %s;" % s["text"])
+            self.setStyleSheet("QFrame#navItem { background: %s;"
+                               " border-radius: 8px; }" % s["nav_act"])
+            self._label.setStyleSheet("color: %s; background: transparent;"
+                                      % s["text"])
         elif self._hover:
-            self.setStyleSheet("QFrame { background: %s; border-radius: 8px; }"
-                               % s["nav_hi"])
-            self._label.setStyleSheet("color: %s;" % s["text"])
+            self.setStyleSheet("QFrame#navItem { background: %s;"
+                               " border-radius: 8px; }" % s["nav_hi"])
+            self._label.setStyleSheet("color: %s; background: transparent;"
+                                      % s["text"])
         else:
-            self.setStyleSheet("QFrame { background: transparent; }")
-            self._label.setStyleSheet("color: %s;" % s["dim"])
+            self.setStyleSheet("QFrame#navItem { background: transparent; }")
+            self._label.setStyleSheet("color: %s; background: transparent;"
+                                      % s["dim"])
 
     def enterEvent(self, ev):
         self._hover = True
@@ -288,17 +332,29 @@ class SettingsDialog(QDialog):
 
         def mk(px, bold=False, use_mono=False):
             f = QFont(mono if use_mono else cjk)
+            # setPixelSize 是逻辑像素，光栅化时再乘 devicePixelRatio。
+            # Windows 缩放恒为 25% 的整数倍（DPR = k/4），因此字号取 4 的
+            # 倍数时，100/125/150/175/200%（乃至 225/250/300%）下设备像素
+            # 全是整数，字体引擎才会走整像素网格 + hinting，不再发灰发虚。
             f.setPixelSize(px)
             f.setBold(bold)
+            # 兜底非标准倍率（如 110%）：整数像素时无副作用，分数像素时
+            # 至少保住竖直方向的整像素对齐
+            f.setHintingPreference(QFont.PreferFullHinting)
             return f
 
+        # 20 → 20/25/30/35/40/45/50/60
         self.f_title = mk(20, True)
-        self.f_card = mk(13, True)
-        self.f_brand = mk(13, True)
-        self.f_label = mk(13)
+        # 16 → 16/20/24/28/32/36/40/48（原 13 → 125% 落到 16.25，发虚根因）
+        self.f_card = mk(16, True)
+        self.f_brand = mk(16, True)
+        # 12 → 12/15/18/21/24/27/30/36（原 13，同上）
+        self.f_label = mk(12)
         self.f_hint = mk(12)
-        self.f_nav = mk(13)
+        self.f_nav = mk(12)
         self.f_mono = mk(12, use_mono=True)
+        # 对话框级兜底：任何没显式 setFont 的子控件都不再退回系统 Segoe UI
+        self.setFont(self.f_label)
 
     # ---------------- 表单值 ----------------
 
@@ -369,13 +425,14 @@ class SettingsDialog(QDialog):
         brand.setStyleSheet("color: %s;" % s["text"])
         side_lay.addWidget(brand)
         ver = QLabel("v" + APP_VERSION, side)
-        ver.setFont(self.f_mono)
+        ver.setFont(self.f_hint)
         ver.setStyleSheet("color: %s;" % s["hint"])
         side_lay.addWidget(ver)
         side_lay.addSpacing(16)
         self._nav = {}
         for key, label, _sub, hue in SET_PAGES:
-            btn = NavButton(s, key, label, hue, self._show_page, side)
+            btn = NavButton(s, key, label, hue, self._show_page, side,
+                            font=self.f_nav)
             side_lay.addWidget(btn)
             self._nav[key] = btn
         side_lay.addStretch(1)
@@ -560,8 +617,12 @@ class SettingsDialog(QDialog):
         card.layout().addLayout(row)
         return rl   # 调用方直接往右侧布局里加控件
 
-    def _field(self, card, label, text, hint=None, secret=False):
-        """表单字段行：左标签、右圆角输入框，说明挂在输入框下方。"""
+    def _field(self, card, label, text, hint=None, secret=False, mono=True):
+        """表单字段行：左标签、右圆角输入框，说明挂在输入框下方。
+
+        mono 只留给 Key / SecretAccessKey 这类逐个字符核对的字段；
+        接口地址、地域等普通文本走正文字体（等宽字在中文界面里偏窄偏密，
+        混排时比其他行"看着怪"）。"""
         s = self._skin
         self._divider(card)
         wrap = QVBoxLayout()
@@ -575,7 +636,7 @@ class SettingsDialog(QDialog):
         lab.setFixedWidth(110)
         row.addWidget(lab, 0, Qt.AlignVCenter)
         entry = QLineEdit(str(text), card)
-        entry.setFont(self.f_mono)
+        entry.setFont(self.f_mono if mono else self.f_label)
         if secret:
             entry.setEchoMode(QLineEdit.Password)
             toggle = QToolButton(card)
@@ -647,7 +708,7 @@ class SettingsDialog(QDialog):
         self._divider(card)
         row = QHBoxLayout()
         row.setContentsMargins(20, 10, 20, 14)
-        row.setSpacing(8)
+        row.setSpacing(10)
         for text, cmd, primary in specs:
             if cmd is None:
                 continue
@@ -665,7 +726,7 @@ class SettingsDialog(QDialog):
 
     def _stepper(self, lo, hi, step, unit="", value=0):
         sp = QSpinBox()
-        sp.setFont(self.f_mono)
+        sp.setFont(self.f_label)
         sp.setRange(lo, hi)
         sp.setSingleStep(step)
         sp.setValue(int(value))
@@ -718,7 +779,7 @@ class SettingsDialog(QDialog):
                           desc="GLM Coding Plan 套餐额度，含 5 小时 / 本周 / MCP 每月窗口")
         self.z_key_edit = self._field(card, "API Key", self.z_key0, secret=True,
                                       hint="智谱开放平台 → API Keys 页面获取")
-        self.z_base_edit = self._field(card, "接口地址", self.z_base0,
+        self.z_base_edit = self._field(card, "接口地址", self.z_base0, mono=False,
                                        hint="国际版（z.ai）填 api.z.ai，一般不用改")
         self.z_30d_cb = QCheckBox("近 30 天")
         self.z_30d_cb.setChecked(self.z_30d)
@@ -742,6 +803,7 @@ class SettingsDialog(QDialog):
                                      secret=True,
                                      hint="账号级密钥，不是方舟里的模型 API Key")
         self.v_region_edit = self._field(card, "地域", self.v_region0,
+                                         mono=False,
                                          hint="一般保持 cn-beijing")
 
         self.d_en_sw = Switch(s)

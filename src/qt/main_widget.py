@@ -264,17 +264,34 @@ class UsageWidget(QWidget):
         self.font_family = fam
         us = self.uscale
 
+        def snap4(px):
+            """逻辑字号对齐到 4 的倍数（仅在偏差 ≤1px 时）。
+
+            setPixelSize 是逻辑像素，光栅化时乘 devicePixelRatio；Windows
+            缩放恒为 25% 的整数倍（DPR = k/4），所以 4 的倍数字号在
+            100/125/150/175/200% 下设备像素全是整数，字体引擎才会走整像素
+            网格 + hinting。用户缩放 ui_scale 非 1.0 时可能偏差更大，
+            那就保持原值，不为了对齐去改设计字号，只靠下面的 hinting 兜底。"""
+            px = max(6, int(round(px)))
+            near = int(round(px / 4.0)) * 4
+            return near if near >= 6 and abs(near - px) <= 1 else px
+
         def mk(size, bold=False):
             f = QFont(fam)
-            f.setPixelSize(max(6, int(round(size * us))))
+            f.setPixelSize(snap4(size * us))
             f.setBold(bold)
+            f.setHintingPreference(QFont.PreferFullHinting)
             return f
 
+        # 基准字号全部取 4 的倍数（原 9/9/7/11 在 125% 下落到
+        # 11.25/11.25/8.75/13.75，全部非整数 → 发虚）：
+        #   8  →  8 / 10 / 12 / 14 / 16
+        #   12 → 12 / 15 / 18 / 21 / 24
         self.fonts = {
-            "title": mk(9, True),
-            "text": mk(9),
-            "small": mk(7),
-            "pct": mk(11, True),
+            "title": mk(8, True),
+            "text": mk(8),
+            "small": mk(8),
+            "pct": mk(12, True),
         }
 
     # ---------------- 窗口 ----------------
