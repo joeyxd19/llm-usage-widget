@@ -134,6 +134,26 @@ begin
   end;
 end;
 
+// 安装收尾：用户以前开过「开机自动启动」时（启动目录里已有
+// usage_widget.vbs），把它改写成指向新安装的 exe。从旧版升级到 v3 时，
+// 旧 VBS 会继续拉起旧版（旧版没有常驻托盘、窗口还可能落在屏外），
+// 表现为"进程在跑，但桌面上既没有悬浮窗也没有托盘图标"。
+// 只改写已经存在的项，不替用户新增开机自启。
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  VbsPath, Content: String;
+begin
+  if CurStep <> ssPostInstall then
+    Exit;
+  VbsPath := ExpandConstant('{userstartup}\usage_widget.vbs');
+  if not FileExists(VbsPath) then
+    Exit;
+  Content := 'CreateObject("WScript.Shell").Run """' +
+             ExpandConstant('{app}\{#MyAppExeName}') +
+             '""", 1, False' + #13#10;
+  SaveStringToFile(VbsPath, Content, False);
+end;
+
 // 卸载收尾：在「卸载完成」页之后执行。
 // 1) 无条件删除应用内「开机自动启动」功能写入的 usage_widget.vbs——
 //    卸载后若残留，Windows 每次开机都会弹 VBS 脚本错误；

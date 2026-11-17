@@ -84,7 +84,10 @@ def _already_running_message():
     try:
         QMessageBox.information(
             None, APP_NAME,
-            "%s已经在运行了。\n请查看屏幕上的悬浮窗。" % APP_NAME)
+            "%s已经在运行了。\n请查看屏幕上的悬浮窗。\n\n"
+            "如果屏幕上没有悬浮窗，可能是旧版程序还占着单实例：\n"
+            "请在任务管理器结束旧的 llm-usage-widget*.exe 后重新启动。"
+            % APP_NAME)
     except Exception:
         pass
     if owned:
@@ -104,6 +107,10 @@ def validate_startup_pos():
                                 pos_on_any_screen)
     try:
         cfg = load_config()
+        # 贴边收起时窗口只剩一条把手、大半在屏外，按完整高度校验会误判
+        # 越界并把上次展开位置覆盖成默认位；贴边布局本身会按屏幕重新夹位。
+        if cfg.get("edge_dock") and str(cfg.get("dock_side") or "none") != "none":
+            return False
         try:
             k = min(1.3, max(0.75, float(cfg.get("ui_scale", 1.0))))
         except (TypeError, ValueError):
@@ -124,7 +131,7 @@ def main():
     _setup_dpi_policy()
 
     from PySide6.QtCore import QLockFile, QTimer
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
     # 单实例：Windows 互斥体（返回 None 表示已有实例），其他平台 QLockFile
     mutex_ok = win32.acquire_single_instance_mutex()
@@ -149,6 +156,14 @@ def main():
 
     install_excepthook()
 
+    # 防复发：升级/换安装目录后，启动目录里的旧 VBS 可能仍指向旧版 exe。
+    # 不新增自启项，只把已有的改写成当前程序；失败绝不影响启动。
+    try:
+        from core.autostart import repair_autostart
+        repair_autostart()
+    except Exception:
+        pass
+
     from qt.main_widget import UsageWidget
     from qt.tray import TrayIcon, make_icon
 
@@ -161,6 +176,16 @@ def main():
     tray.show()     # QSystemTrayIcon 同样默认隐藏：不 show 托盘里也没图标，
                     # 用户连"找回悬浮窗"的入口都没有
     widget._tray = tray
+    if not QSystemTrayIcon.isSystemTrayAvailable():
+        # 开机自启时托盘区可能还没就绪，第一次 show 会静默失败（重装图标
+        # 不会自动补）。5 秒后补一次；悬浮窗已在，失败不影响主流程。
+        def _retry_tray():
+            try:
+                tray.hide()
+                tray.show()
+            except Exception:
+                pass
+        QTimer.singleShot(5000, _retry_tray)
     try:
         app.setWindowIcon(make_icon(widget.t))
     except Exception:

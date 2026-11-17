@@ -31,8 +31,12 @@ def quote_command(path):
 
 def vbs_content(cmd):
     """生成静默启动 VBScript。cmd 为已转义引号的完整命令串，
-    打包版是 '"<exe>"'，源码版是 '"<pythonw>" "<脚本>"'。"""
-    return 'CreateObject("WScript.Shell").Run "%s", 0, False\n' % cmd
+    打包版是 '"<exe>"'，源码版是 '"<pythonw>" "<脚本>"'。
+
+    窗口样式用 1（正常）而不是 0（隐藏）：Windows 会把启动信息里的隐藏
+    状态套到进程第一次 ShowWindow 上，GUI 程序可能因此"窗口已显示"却
+    始终不可见。两版入口都是 GUI 子系统，用 1 不会闪控制台。"""
+    return 'CreateObject("WScript.Shell").Run "%s", 1, False\n' % cmd
 
 
 def launch_command():
@@ -75,3 +79,26 @@ def disable_autostart():
         except Exception as e:
             return False, "取消失败: %s" % e
     return False, "当前没有开机自启"
+
+
+def repair_autostart():
+    """自启项指向别的 exe 时改写成当前程序，返回 (是否改写, 提示消息)。
+
+    升级到 v3 或换安装目录后，启动目录里的旧 VBS 会继续拉起旧版：
+    旧版没有常驻托盘、窗口还可能落在屏外，表现成"进程在跑但桌面上
+    什么都看不到"。这里只在用户已经开过自启（VBS 存在）时改写，
+    绝不新增自启项；内容只差窗口样式（旧版是 0）也一并收敛。"""
+    if not getattr(sys, "frozen", False):
+        return False, ""
+    path = autostart_file()
+    if not path or not os.path.isfile(path):
+        return False, ""
+    try:
+        with open(path, "rb") as f:
+            text = f.read().decode("gbk", "replace")
+    except OSError:
+        return False, ""
+    expected = vbs_content(launch_command())
+    if text.replace("\r\n", "\n").strip() == expected.strip():
+        return False, ""
+    return enable_autostart()

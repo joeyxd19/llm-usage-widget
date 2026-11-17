@@ -560,6 +560,10 @@ class UsageWidget(QWidget):
             self.redraw()
 
     def _save_window_pos(self):
+        # 贴边收起时窗口只是一条把手，保存它的坐标会让下次启动按
+        # 完整窗口高度校验时判成越界、把展开位置覆盖掉。
+        if self.dock_state in ("docked", "expanding"):
+            return
         save_config_patch({"window_x": self.x(), "window_y": self.y()})
 
     def _detect_edge(self, threshold=26):
