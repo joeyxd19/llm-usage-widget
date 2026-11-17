@@ -75,11 +75,36 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           VERSION="${TAG#v}"
+          # 不要用 --collect-all PySide6：它会让 PyInstaller 的按需裁剪完全失效，
+          # 把整个 wheel（qml/ 1785 个文件、translations/ 200 个、metatypes、
+          # typesystems、开发工具 exe 等）全塞进产物，载荷从 ~60 MB 涨到 240 MB。
+          # 本应用只 import QtCore / QtGui / QtWidgets（图标全部 QPainter 现画），
+          # 交给 PySide6 hook 收集即可，下面再用 --exclude-module 兜一层。
+          # 构建后由 scripts/trim_pyside.py 做白名单兜底裁剪，并校验关键插件。
           pyinstaller --noconsole --clean \
-            --collect-all PySide6 \
+            --exclude-module PySide6.QtQml \
+            --exclude-module PySide6.QtQuick \
+            --exclude-module PySide6.QtQuickControls2 \
+            --exclude-module PySide6.QtQuickWidgets \
+            --exclude-module PySide6.QtQuickTest \
+            --exclude-module PySide6.QtNetwork \
+            --exclude-module PySide6.QtSql \
+            --exclude-module PySide6.QtTest \
+            --exclude-module PySide6.QtDBus \
+            --exclude-module PySide6.QtXml \
+            --exclude-module PySide6.QtPrintSupport \
+            --exclude-module PySide6.QtOpenGL \
+            --exclude-module PySide6.QtOpenGLWidgets \
+            --exclude-module PySide6.QtDesigner \
+            --exclude-module PySide6.QtUiTools \
+            --exclude-module PySide6.QtHelp \
             --distpath dist/onedir --workpath build/onedir \
             --name "llm-usage-widget" \
             src/qt/app.py
+
+      - name: 裁剪 PySide6 运行时（去掉开发资料与多余插件）
+        shell: bash
+        run: python scripts/trim_pyside.py dist/onedir/llm-usage-widget
 
       - name: 生成当前版本 manifest
         shell: bash
