@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtCore import QObject, QPoint, QPropertyAnimation, QTimer, Qt, Signal
 from PySide6.QtCore import Property, QEasingCurve, QParallelAnimationGroup
 from PySide6.QtGui import QCursor, QFont, QFontDatabase, QPainter, QActionGroup
-from PySide6.QtWidgets import QMenu, QWidget
+from PySide6.QtWidgets import QMenu, QMessageBox, QWidget
 
 from core import notify as core_notify
 from core.burn_predict import (HIST_KEY_MAP, append_history, load_history,
@@ -209,6 +209,9 @@ class UsageWidget(QWidget):
         self.cur_w = 0
         self.cur_h = 0
         self._settings_open = None
+        # 正在显示的提示窗（toast / 新版本气泡 / 对话框）：置顶守护据此
+        # 暂时让位，否则悬浮窗每 1.5 秒重新置顶会把提示压到下面
+        self._feedback = []
 
         # 启动时恢复上次的贴边收起状态
         if (self.cfg.get("edge_dock", False)
@@ -1187,9 +1190,25 @@ class UsageWidget(QWidget):
         self._cancel_topmost_guard()
         self._topmost_timer.start(700)
 
+    def _feedback_active(self):
+        """是否有仍在显示的提示窗（toast / 新版本气泡 / 对话框）。
+
+        SetWindowPos(HWND_TOPMOST) 会把悬浮窗放到置顶层的**最上面**，
+        同层级的提示窗会被它盖住；所以提示显示期间先不重新置顶。"""
+        alive = []
+        for w in self._feedback:
+            try:
+                if w is not None and w.isVisible():
+                    alive.append(w)
+            except RuntimeError:   # 底层 C++ 对象已销毁
+                pass
+        self._feedback = alive
+        return bool(alive)
+
     def _topmost_tick(self):
-        if self._topmost_paused:
-            # 右键菜单显示中：此时把悬浮窗钉回最上层会重新盖住菜单，先让位
+        if self._topmost_paused or self._feedback_active():
+            # 右键菜单/提示窗显示中：此时把悬浮窗钉回最上层会重新盖住
+            # 菜单或提示，先让位
             self._topmost_timer.start(400)
             return
         if not self._topmost_hwnd:
@@ -1349,7 +1368,10 @@ class UsageWidget(QWidget):
             self._toast("当前运行方式不支持自动更新")
             return
         self._toast("正在检查更新…")
-        self.updater.check()
+        try:
+            self.updater.check()
+        except Exception as exc:
+            self._update_error("检查更新失败", "无法启动检查：%s" % exc)
 
     def _silent_update_check(self):
         """后台静默检查更新。仅在打包版且未处于初始设置状态时执行。"""
@@ -1361,26 +1383,70 @@ class UsageWidget(QWidget):
             pass
 
     def _update_message(self, title, text):
-        self._toast(text.split("\n")[0][:60] or title)
+        """检查更新的结果提示：用对话框，不用两秒就消失的 toast。
+
+        悬浮窗常驻置顶并可能贴在屏幕底边，toast 会被压住或落在任务栏
+        后面，用户看到的就是「点了没反应」——手动检查的每个出口都必须
+        有停得住、看得见的反馈。"""
+        self._show_box(QMessageBox.Icon.Information, title, text)
 
     def _update_error(self, title, msg):
-        self._toast("%s：%s" % (title, msg.split("\n")[0][:50]))
+        self._show_box(
+            QMessageBox.Icon.Warning, title,
+            "%s\n\n也可以到 Releases 页面手动下载安装包：\n"
+            "https://github.com/joeyxd19/llm-usage-widget/releases" % msg)
+
+    def _show_box(self, icon, title, text, buttons=QMessageBox.Ok):
+        """弹一个模态对话框（无父窗口→居中于屏幕，并置于最上层）。"""
+        box = QMessageBox(icon, title, text, buttons, None)
+        box.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        self._feedback.append(box)
+        try:
+            return box.exec()
+        finally:
+            try:
+                self._feedback.remove(box)
+            except ValueError:
+                pass
 
     def _show_update_bubble(self, info):
-        """发现新版时在屏幕右下角弹出可点击气泡。"""
+        """发现新版：手动检查用对话框（一定看得见），后台静默检查用气泡。"""
+        if info.get("silent"):
+            self._show_bubble(info)
+            return
+        notes = (info.get("body") or "").strip()
+        text = ("当前版本 v%s → 新版本 %s\n\n更新包：%s\n\n更新说明：\n%s\n\n"
+                "是否现在下载并安装？" % (info.get("current", ""),
+                                          info.get("tag", ""),
+                                          info.get("size_text", ""),
+                                          notes or "暂无更新说明。"))
+        try:
+            ans = self._show_box(QMessageBox.Icon.Information,
+                                 "发现新版本 %s" % info.get("tag", ""),
+                                 text, QMessageBox.Yes | QMessageBox.No)
+        except Exception:
+            self._show_bubble(info)
+            return
+        if ans == QMessageBox.Yes:
+            info["download"]()
+        else:
+            info["dismiss"]()
+
+    def _show_bubble(self, info):
+        """右下角气泡（后台静默检查发现新版时用，不打断用户）。"""
         try:
             from .update_ui import UpdateBubble
             bubble = UpdateBubble(info, self.t, self.font_family,
                                   self.uscale)
             bubble.show_at_bottom_right()
+            self._feedback.append(bubble)
         except Exception:
             # 气泡兜底：至少用原生对话框把更新信息给出去，不能静默失败
             try:
-                from PySide6.QtWidgets import QMessageBox
-                box = QMessageBox(QMessageBox.Information, "发现新版本",
-                                  "发现新版本 %s，是否现在下载并安装？" % info.get("tag"),
-                                  QMessageBox.Yes | QMessageBox.No)
-                if box.exec() == QMessageBox.Yes:
+                if self._show_box(
+                        QMessageBox.Icon.Information, "发现新版本",
+                        "发现新版本 %s，是否现在下载并安装？" % info.get("tag"),
+                        QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
                     info["download"]()
                 else:
                     info["dismiss"]()
@@ -1598,7 +1664,10 @@ class UsageWidget(QWidget):
     def _toast(self, msg):
         """悬浮窗下方弹出小气泡，短暂停留后淡出。"""
         from .toast import show_toast
-        show_toast(self, msg, self.t, max(9, int(round(9 * self.uscale))))
+        t = show_toast(self, msg, self.t, max(9, int(round(9 * self.uscale))))
+        if t is not None:
+            # 让置顶守护在气泡存活期间让位，否则会被悬浮窗盖住
+            self._feedback.append(t)
 
 
 # 延迟导入供应商函数，便于单独替换/测试

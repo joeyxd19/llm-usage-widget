@@ -32,16 +32,26 @@ class Toast(QWidget):
         self._timer.timeout.connect(self._fade)
 
     def popup(self, anchor_widget, delay_ms=1600):
-        """在 anchor_widget（全局坐标）下方居中弹出，delay_ms 后开始淡出。"""
+        """在 anchor_widget（全局坐标）下方居中弹出，delay_ms 后开始淡出。
+
+        只在可用区（availableGeometry，已去掉任务栏）内摆放，下方放不下
+        时翻到窗口上方：悬浮窗常贴在屏幕底边，向下弹会掉进任务栏后面。"""
         self.adjustSize()
-        geo = self.screen().geometry()
+        try:
+            av = self.screen().availableGeometry()
+        except Exception:
+            from PySide6.QtGui import QGuiApplication
+            av = QGuiApplication.primaryScreen().availableGeometry()
         x = (anchor_widget.x() + anchor_widget.width() // 2
              - self.width() // 2)
         y = anchor_widget.y() + anchor_widget.height() + 10
-        x = min(max(geo.left() + 8, x), geo.right() - self.width() - 8)
-        y = min(y, geo.bottom() - self.height() - 8)
+        if y + self.height() > av.bottom() - 8:
+            y = anchor_widget.y() - self.height() - 10
+        x = min(max(av.left() + 8, x), av.right() - self.width() - 8)
+        y = min(max(av.top() + 8, y), av.bottom() - self.height() - 8)
         self.move(x, y)
         self.show()
+        self.raise_()
         QTimer.singleShot(delay_ms, self._start_fade)
 
     def _start_fade(self):

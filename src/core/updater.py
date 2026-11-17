@@ -181,7 +181,7 @@ class Updater:
                 return
             url = asset["browser_download_url"]
             size = asset.get("size", 0)
-            self._ask_update(tag, body, url, size)
+            self._ask_update(tag, body, url, size, silent=silent)
             return
 
         # 文件夹版：优先增量包，但仅当上一条 release 正好是当前版本时才安全
@@ -232,9 +232,10 @@ class Updater:
                 delta_info = self._compute_delta(manifest)
             except Exception:
                 delta_info = None
-        self._ask_update(tag, body, url, size, manifest, delta_info)
+        self._ask_update(tag, body, url, size, manifest, delta_info, silent)
 
-    def _ask_update(self, tag, body, url, size, manifest=None, delta_info=None):
+    def _ask_update(self, tag, body, url, size, manifest=None, delta_info=None,
+                    silent=False):
         try:
             mb = size / (1024 * 1024) if size else 0
             size_text = f"约 {mb:.1f} MB" if mb else "大小未知"
@@ -257,6 +258,9 @@ class Updater:
                         "size_text": size_text + (f" {extra}" if extra else ""),
                         "asset": asset_name,
                         "url": url,
+                        # 手动检查（右键菜单）要求一定看得见，UI 层据此改用
+                        # 对话框；后台 30 秒静默检查仍只弹右下角气泡
+                        "silent": silent,
                         "download": lambda: self._download_and_apply(tag, url, manifest),
                         "dismiss": lambda: setattr(self, "_busy", False),
                     }
