@@ -10,8 +10,8 @@ src 只用 QtCore / QtGui / QtWidgets（图标全部 QPainter 现画，没有 QM
 
 裁剪原则是"只删确定用不到的"：
 - release.yml 已经不再 --collect-all，本脚本只是兜底；
-- plugins 下的 platforms / styles / imageformats / iconengines / generic
-  一律保留（styles/qmodernwindowsstyle.dll 是窗口样式依赖）；
+- plugins 下的 platforms / styles / imageformats / iconengines 一律保留
+  （styles/qmodernwindowsstyle.dll 是窗口样式依赖）；
 - 不动 Qt6Core/Qt6Gui/Qt6Widgets/QtSvg、icudtl.dat、msvcp/vcruntime；
 - 不动 libcrypto-3.dll / libssl-3.dll —— Python 的 ssl（HTTPS 请求）要用；
 - opengl32sw.dll（软件 OpenGL 回退，约 20 MB）会随 OpenGL\\w* 规则删除：
@@ -25,13 +25,23 @@ import shutil
 import sys
 from pathlib import Path
 
+# Windows CI runner 的 stdout 默认按本地代码页（cp1252）编码，直接 print
+# 中文会抛 UnicodeEncodeError 把构建判失败，这里先强制 UTF-8。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # 整个目录都删（只在 PySide6 目录下匹配，避免误伤应用自己的目录）
 DROP_DIRS = {"qml", "metatypes", "typesystems", "include", "glue",
              "qmltypes", "doc", "scripts", "lib"}
 
-# plugins 下保留的分类；其余（sqldrivers/tls/qmltooling/designer 等）整目录删
-KEEP_PLUGIN_DIRS = {"platforms", "styles", "imageformats", "iconengines",
-                    "generic"}
+# plugins 下保留的分类；其余（sqldrivers/tls/qmltooling/designer 等）整目录删。
+# generic 在 Windows 上只有 qtuiotouchplugin.dll（TUIO 触摸），它依赖
+# Qt6Network，而本应用不用网络插件，留着反而会让 PyInstaller 连带收进
+# Qt6Network.dll，所以也删。
+KEEP_PLUGIN_DIRS = {"platforms", "styles", "imageformats", "iconengines"}
 
 # Qt6Xxx.dll / Xxx.pyd 里可以删的模块
 _DROP_RE = re.compile(
