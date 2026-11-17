@@ -29,12 +29,41 @@ import threading
 import time
 
 from .autostart import AUTOSTART_VBS_NAME
-from .http_client import http_json, open_url
+from .config import APP_VERSION, data_dir
+from .http_client import classify_error, http_json, open_url
 
 GITHUB_API = (
     "https://api.github.com/repos/joeyxd19/llm-usage-widget/releases/latest"
 )
-APP_NAME = "额度悬浮窗"
+# HTTP 请求头必须是 ASCII（http.client 按 latin-1 编码）。v3.3.4 及以前
+# 这里用的是中文 APP_NAME，检查更新在发送阶段就抛 UnicodeEncodeError，
+# 被 http_client 吞成 code=0，最终误报「无法连接 GitHub」。
+USER_AGENT = "llm-usage-widget/%s" % APP_VERSION
+
+_LOG_MAX_BYTES = 1024 * 1024
+
+
+def _log_failure(stage, detail):
+    """把更新失败的真实异常写入 error.log（不写 URL 与密钥）。
+
+    detail 来自 http_client 的失败摘要（异常类型 + 网络层文案），不含
+    请求头原文；这里再压掉换行并截断，避免脏数据撑爆日志。"""
+    try:
+        path = os.path.join(data_dir(), "error.log")
+        try:
+            if os.path.getsize(path) > _LOG_MAX_BYTES:
+                os.replace(path, path + ".1")
+        except OSError:
+            pass
+        line = "[%s] %s：%s\n" % (
+            time.strftime("%Y-%m-%d %H:%M:%S"), stage,
+            " ".join(str(detail or "").split())[:500],
+        )
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+
 
 # Windows 下创建脱离控制台的子进程；Linux/macOS 上无此常量， guard 一下
 if os.name == "nt":
@@ -324,10 +353,12 @@ class Updater:
         return f"llm-usage-widget_v{self._version_from_tag(tag)}.exe"
 
     def _download_manifest(self, url):
-        code, data = http_json(url, headers={"User-Agent": APP_NAME},
+        code, data = http_json(url, headers={"User-Agent": USER_AGENT},
                                timeout=15)
         if code == 0:
-            raise RuntimeError("无法下载更新清单，请开启系统代理后重试")
+            _log_failure("下载更新清单", data)
+            raise RuntimeError("无法下载更新清单：%s。已尝试直连与系统代理。"
+                               % classify_error(data))
         if code != 200:
             raise RuntimeError("更新清单下载失败（HTTP %s）" % code)
         if not isinstance(data, dict):
@@ -358,12 +389,14 @@ class Updater:
             GITHUB_API,
             headers={
                 "Accept": "application/vnd.github+json",
-                "User-Agent": APP_NAME,
+                "User-Agent": USER_AGENT,
             },
             timeout=15,
         )
         if code == 0:
-            raise RuntimeError("无法连接 GitHub，请开启系统代理后重试")
+            _log_failure("检查更新", data)
+            raise RuntimeError("无法连接 GitHub：%s。已尝试直连与系统代理。"
+                               % classify_error(data))
         if code != 200:
             if code == 403:
                 raise RuntimeError("GitHub API 请求次数达上限，请稍后再试")
@@ -403,7 +436,7 @@ class Updater:
         )
         try:
             # 大文件流式下载：直连失败自动回退系统代理（open_url）
-            with open_url(url, headers={"User-Agent": APP_NAME},
+            with open_url(url, headers={"User-Agent": USER_AGENT},
                           timeout=120) as resp:
                 total = int(resp.headers.get("Content-Length", 0))
                 downloaded = 0
@@ -423,8 +456,8 @@ class Updater:
             self._verify_package(url, dest, manifest)
             self._on_downloaded(version, dest, manifest)
         except Exception as exc:
-            err = str(exc)
-            self._on_error("下载失败", err, False)
+            _log_failure("下载更新包", "%s: %s" % (type(exc).__name__, exc))
+            self._on_error("下载失败", str(exc), False)
 
     def _on_downloaded(self, version, dest, manifest=None):
         self._set_progress(100, "下载完成，准备安装…")

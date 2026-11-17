@@ -5,6 +5,7 @@
 会真 sleep（最长 14 秒），不在单测覆盖范围。"""
 
 import io
+import time
 import urllib.error
 
 import pytest
@@ -107,6 +108,53 @@ def test_once_plain_http_error_no_retry_after():
     code, parsed, ra = hc._http_json_once(
         _FakeOpener(exc=err), "http://x", None, None, 5)
     assert (code, parsed, ra) == (401, "no", 0.0)
+
+
+# ---------------- 非 ASCII 请求头（v3.3.4 检查更新回归） ----------------
+
+def test_once_unicode_header_error_reports_type():
+    """中文请求头会让 http.client 抛 UnicodeEncodeError，不能被吞成泛化文案。"""
+    err = UnicodeEncodeError("latin-1", "额度悬浮窗", 0, 5,
+                             "ordinal not in range(256)")
+    code, msg, ra = hc._http_json_once(
+        _FakeOpener(exc=err), "http://x", None, None, 5)
+    assert code == 0
+    assert ra == 0.0
+    assert "UnicodeEncodeError" in msg
+
+
+def test_http_json_local_format_error_no_backoff(monkeypatch):
+    """本地请求格式错误两条路都会失败，不做 2/4/8 秒退避重试。"""
+    err = UnicodeEncodeError("latin-1", "中文", 0, 2,
+                             "ordinal not in range(256)")
+    opener = _FakeOpener(exc=err)
+    monkeypatch.setattr(hc, "_openers", lambda: (opener, opener))
+    t0 = time.time()
+    code, msg = hc.http_json("http://x")
+    assert code == 0
+    assert "UnicodeEncodeError" in msg
+    assert time.time() - t0 < 1.0
+
+
+def test_classify_error():
+    cases = [
+        ("网络错误: URLError: <urlopen error [WinError 10061] 拒绝>",
+         "代理连接被拒绝"),
+        ("网络错误: URLError: <urlopen error [Errno 11001] getaddrinfo failed>",
+         "DNS 解析失败"),
+        ("网络错误: TimeoutError: timed out", "连接超时"),
+        ("网络错误: SSLCertVerificationError: certificate verify failed",
+         "证书校验失败"),
+        ("网络错误: URLError: <urlopen error [WinError 10054] 重置>",
+         "连接被重置"),
+        ("请求头编码失败（UnicodeEncodeError）: ordinal not in range(256)",
+         "请求头编码失败（含非 ASCII 字符）"),
+        ("请求格式错误：请检查 API Key 是否误粘贴了换行或特殊字符",
+         "请求参数格式错误"),
+        ("something else", "网络错误"),
+    ]
+    for detail, want in cases:
+        assert hc.classify_error(detail) == want
 
 
 # ---------------- open_url：大文件流式下载的双路回退 ----------------
