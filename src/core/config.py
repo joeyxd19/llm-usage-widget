@@ -50,7 +50,9 @@ DEFAULT_CONFIG = {
     "burn_predict": False,      # 烧速预测（按历史用量外推何时用尽），默认关闭
     "window_x": 120,
     "window_y": 120,
-    "theme": "auto",           # auto 自动跟随背景 | dark 深色 | light 浅色
+    # system 自动跟随 Windows 深浅色 | dark 深色 | light 浅色
+    # （旧版本写入的 "auto"（跟随背景）读取时按 system 处理，不写回配置）
+    "theme": "system",
     "edge_dock": False,        # 贴边自动收起（默认关：新用户先看到完整悬浮窗；老配置里的 true 保持 true）
     "edge_glow": True,         # 收起把手光效（1px 亮描边 + 呼吸动画；关了就是纯色静态条）
     "dock_side": "none",       # none/left/right/top/bottom（上次收起的边）

@@ -7,7 +7,7 @@
 - 贴边收起/悬停展开：QPropertyAnimation（位移 + 透明度并行）
 - 收起态为细长胶囊把手，内嵌各供应商微型进度条（v2 经典样式）：
   悬停 200ms 防误触展开、微放大（Property 动画）、可拖去四边换边
-- 拖动、边缘检测、位置记忆与越界复位、深浅主题（自动=背景亮度采样）
+- 拖动、边缘检测、位置记忆与越界复位、深浅主题（自动=跟随系统深浅色）
 - 刷新链：工作线程并行拉取两家供应商，信号回主线程应用
 - 阈值/烧速系统通知（core.notify）、本地历史（core.burn_predict）
 
@@ -33,7 +33,7 @@ from core.refresh_status import FAIL_REMIND_STREAK, FailStreak, stale_suffix
 
 from . import detail_panel as dp
 from . import win32
-from .theme import FONT_FAMILY_CANDIDATES, THEMES
+from .theme import FONT_FAMILY_CANDIDATES, THEME_LABELS, THEMES, norm_theme_mode
 
 
 def _f(v, default):
@@ -203,6 +203,11 @@ class UsageWidget(QWidget):
         self._screen_recover_timer = QTimer(self)   # 显示器拔插后的复位抖动缓冲
         self._screen_recover_timer.setSingleShot(True)
         self._screen_recover_timer.timeout.connect(self._recover_window_pos)
+        # 跟随系统主题：定时比对注册表，Windows 切换深浅色时热切换（无需重启）
+        self._sys_theme_timer = QTimer(self)
+        self._sys_theme_timer.setInterval(3000)
+        self._sys_theme_timer.timeout.connect(self._poll_system_theme)
+        self._sys_theme_timer.start()
         # ---- 配色主题 ----
         self.theme_eff = "dark"
         self.t = dict(THEMES["dark"])
@@ -413,16 +418,16 @@ class UsageWidget(QWidget):
             self.menu.addAction("检查更新…", self._manual_update_check)
         self.menu.addSeparator()
 
-        # 配色主题（互斥三选）
+        # 配色主题（互斥三选；自动档跟随 Windows 深浅色）
         theme_menu = self.menu.addMenu("配色主题")
         group = QActionGroup(theme_menu)
         group.setExclusive(True)
         self._theme_actions = {}
-        for mode, label in (("auto", "自动（跟随背景）"), ("dark", "深色"),
-                            ("light", "浅色")):
+        cur_mode = norm_theme_mode(self.cfg.get("theme", "system"))
+        for mode, label in THEME_LABELS:
             a = theme_menu.addAction(label)
             a.setCheckable(True)
-            a.setChecked(str(self.cfg.get("theme", "auto") or "auto") == mode)
+            a.setChecked(cur_mode == mode)
             a.triggered.connect(lambda _c=False, m=mode: self._set_theme(m))
             group.addAction(a)
             self._theme_actions[mode] = a
@@ -480,9 +485,10 @@ class UsageWidget(QWidget):
             self._snap_to_expanded()  # 直接恢复普通窗口（不会再自动收回）
 
     def _set_theme(self, mode):
-        """右键菜单切换配色主题，立即生效并保存。"""
-        if mode not in ("auto", "dark", "light"):   # 脏值收敛
-            mode = "auto"
+        """右键菜单切换配色主题，立即生效并保存。
+
+        旧配置里的 "auto" 在这里会归一化成 "system"（自动跟随系统）。"""
+        mode = norm_theme_mode(mode)
         self.cfg["theme"] = mode
         save_config_patch({"theme": mode})
         for m, act in getattr(self, "_theme_actions", {}).items():
@@ -581,45 +587,37 @@ class UsageWidget(QWidget):
 
     # ---------------- 配色主题 ----------------
 
-    def _theme_sample_rect(self):
-        """返回用于背景取样的矩形 (x, y, w, h)。"""
-        w, h = self._compute_layout_size()
-        if self._placed:
-            x, y = self.x(), self.y()
-        else:
-            x = int(_to_int(self.cfg.get("window_x", 120), 120))
-            y = int(_to_int(self.cfg.get("window_y", 120), 120))
-        # 贴边收起时窗口大半在屏幕外，改用贴边展开位取样
-        if self.dock_state == "docked":
-            sw, sh = self._screen_size()
-            if self.dock_side == "left":
-                x = 0
-            elif self.dock_side == "right":
-                x = sw - w
-            elif self.dock_side == "top":
-                y = 0
-            elif self.dock_side == "bottom":
-                y = sh - h
-        return x, y, w, h
-
     def _apply_theme(self, force=False):
-        """按配置（含自动感应）刷新主题；返回主题是否发生变化。"""
-        mode = str(self.cfg.get("theme", "auto") or "auto")
-        if mode not in ("auto", "dark", "light"):   # 脏配置收敛
-            mode = "auto"
+        """按配置刷新主题；返回主题是否发生变化。
+
+        dark / light 固定；system 跟随 Windows「应用模式」的深浅色，
+        注册表读不到或值异常时回退现有默认主题（深色）。"""
+        mode = norm_theme_mode(self.cfg.get("theme", "system"))
         eff = mode
-        if mode == "auto":
-            try:
-                x, y, w, h = self._theme_sample_rect()
-                sw, sh = self._screen_size()
-                lum = win32.sample_background_luminance(x, y, w, h, sw, sh)
-            except Exception:
-                lum = None
-            eff = "light" if (lum is not None and lum >= 150) else "dark"
+        if mode == "system":
+            light = win32.apps_use_light_theme()
+            eff = "light" if light else "dark"
         changed = (eff != self.theme_eff) or force
         self.theme_eff = eff
         self.t = THEMES[eff]
         return changed
+
+    def _poll_system_theme(self):
+        """跟随系统档：定时比对注册表，系统切深浅色时热切换（无需重启）。
+
+        深色/浅色档直接返回，不做任何注册表访问；切档后主题有变化才重绘，
+        并立刻同步托盘图标与菜单。"""
+        if norm_theme_mode(self.cfg.get("theme", "system")) != "system":
+            return
+        if not self._apply_theme():
+            return
+        self.redraw()
+        tray = getattr(self, "_tray", None)
+        try:
+            if tray is not None:
+                tray._sync_status()
+        except Exception:
+            pass
 
     # ---------------- 贴边自动收起 ----------------
 
@@ -1312,7 +1310,8 @@ class UsageWidget(QWidget):
         self._metrics()
         self._pick_fonts()
         self._build_menu()
-        self._apply_theme()                  # 配色主题可能被修改
+        if self._apply_theme():              # 配色主题可能被修改
+            self.redraw()                    # 立即按新主题重绘
         self._placed = True                  # 保持当前位置，不跳回
         if not self.cfg.get("edge_dock", False) and self.dock_state == "docked":
             self._snap_to_expanded()       # 贴边开关被关闭：恢复普通窗口

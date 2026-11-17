@@ -35,3 +35,25 @@ THEMES = {
 
 FONT_FAMILY_CANDIDATES = ["Microsoft YaHei UI", "Microsoft YaHei",
                           "PingFang SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei"]
+
+# 主题档位（配置 theme 字段的取值）：
+#   dark / light  固定深色、浅色
+#   system        自动跟随系统（Windows「应用模式」的深浅色设置）
+# "auto" 是旧版本「跟随悬浮窗背后背景明暗」的取值：新版本读取时按 system
+# 处理，但不写回配置文件，保证老用户已存的主题值不被改写。
+THEME_MODES = ("dark", "light", "system")
+THEME_LABELS = (("dark", "深色"), ("light", "浅色"),
+                ("system", "自动（跟随系统）"))
+DEFAULT_THEME = "dark"   # 注册表读不到/值异常时回退的默认主题
+
+
+def norm_theme_mode(value):
+    """把配置里的主题值收敛到 dark / light / system。
+
+    未知值（含用户手动改坏的值）回退 DEFAULT_THEME；任何输入都不抛异常。"""
+    v = str(value or "").strip().lower()
+    if v in ("dark", "light"):
+        return v
+    if v in ("system", "auto"):
+        return "system"
+    return DEFAULT_THEME

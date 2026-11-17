@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 from core.config import APP_NAME
 
 from . import detail_panel as dp
+from .theme import THEME_LABELS, norm_theme_mode
 
 
 def make_icon(theme, pct_z=None, pct_v=None, px=64):
@@ -110,11 +111,11 @@ class TrayIcon(QSystemTrayIcon):
         theme_menu = menu.addMenu("配色主题")
         group = QActionGroup(theme_menu)
         group.setExclusive(True)
-        for mode, label in (("auto", "自动（跟随背景）"), ("dark", "深色"),
-                            ("light", "浅色")):
+        cur_mode = norm_theme_mode(w.cfg.get("theme", "system"))
+        for mode, label in THEME_LABELS:
             a = theme_menu.addAction(label)
             a.setCheckable(True)
-            a.setChecked(str(w.cfg.get("theme", "auto") or "auto") == mode)
+            a.setChecked(cur_mode == mode)
             a.triggered.connect(lambda _c=False, m=mode: w._set_theme(m))
             group.addAction(a)
 

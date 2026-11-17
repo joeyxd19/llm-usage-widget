@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Win32 平台助手（ctypes 调用，非 UI 依赖）：置顶守护、背景亮度采样、
+"""Win32 平台助手（ctypes / winreg，非 UI 依赖）：置顶守护、系统深浅色读取、
 单实例互斥体。全部函数在非 Windows 平台安全降级（no-op / None / True）。"""
 
 import sys
@@ -56,41 +56,22 @@ def release_topmost(hwnd):
     _set_topmost(hwnd, _HWND_NOTOPMOST)
 
 
-def sample_background_luminance(x, y, w, h, screen_w, screen_h):
-    """采样矩形四周（外扩 8px）背景亮度的中位数（0~255）。
-    只取窗口外的点，不会被悬浮窗自己污染；失败返回 None。"""
+def apps_use_light_theme():
+    """读取 Windows「应用模式」的深浅色设置（AppsUseLightTheme）。
+
+    返回 True=浅色 / False=深色 / None=读不到或值异常。
+    非 Windows、注册表项不存在、无权限、值被改坏等情况一律返回 None，
+    绝不抛异常——调用方据此回退默认主题。"""
     if sys.platform != "win32":
         return None
     try:
-        import ctypes
-        user32 = _user32()
-        gdi32 = ctypes.windll.gdi32
-        dc = user32.GetDC(0)
-        try:
-            off = 8
-            pts = [
-                (x - off, y - off), (x + w + off, y - off),
-                (x - off, y + h + off), (x + w + off, y + h + off),
-                (x + w // 2, y - off), (x + w // 2, y + h + off),
-                (x - off, y + h // 2), (x + w + off, y + h // 2),
-            ]
-            lums = []
-            for px, py in pts:
-                if px < 0 or py < 0 or px >= screen_w or py >= screen_h:
-                    continue
-                c = gdi32.GetPixel(dc, int(px), int(py))  # COLORREF 0x00BBGGRR
-                if c < 0:                                 # CLR_INVALID
-                    continue
-                r = c & 0xFF
-                g = (c >> 8) & 0xFF
-                b = (c >> 16) & 0xFF
-                lums.append(0.299 * r + 0.587 * g + 0.114 * b)
-            if not lums:
-                return None
-            lums.sort()
-            return lums[len(lums) // 2]
-        finally:
-            user32.ReleaseDC(0, dc)
+        import winreg
+        with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Themes"
+                r"\Personalize") as key:
+            val, _typ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+        return int(val) != 0
     except Exception:
         return None
 

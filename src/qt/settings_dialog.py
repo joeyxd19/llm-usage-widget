@@ -22,7 +22,8 @@ from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QCheckBox,
 from core.config import (APP_NAME, APP_VERSION, SCALE_SHORT, SCALE_STEPS,
                          _to_bool, _to_int, config_path, data_dir)
 
-from .theme import C_ACCENT_D, C_ACCENT_V, C_ACCENT_Z, C_GREEN, C_RED, C_YELLOW
+from .theme import (C_ACCENT_D, C_ACCENT_V, C_ACCENT_Z, C_GREEN, C_RED,
+                    C_YELLOW, THEME_LABELS, norm_theme_mode)
 
 # 五个功能页（顺序即导航顺序）：key -> (标题, 副标题, 主题色点)
 SET_PAGES = [
@@ -376,10 +377,7 @@ class SettingsDialog(QDialog):
         self.d_en = bool(dcfg.get("enabled", False))
         self.d_key0 = str(dcfg.get("api_key", ""))
         self.d_exp0 = _to_bool(dcfg.get("experimental_usage", False), False)
-        theme_val = str(cfg.get("theme", "auto") or "auto")
-        if theme_val not in ("auto", "dark", "light"):
-            theme_val = "auto"
-        self.theme0 = theme_val
+        self.theme0 = norm_theme_mode(cfg.get("theme", "system"))
         try:
             scale_now = float(cfg.get("ui_scale", 1.0))
         except (TypeError, ValueError):
@@ -864,10 +862,11 @@ class SettingsDialog(QDialog):
     def _page_appearance(self, lay):
         card = self._card(lay, "配色主题", "#a88fff")
         right = self._row(card, "配色主题",
-                          "自动模式感应悬浮窗背后的背景明暗；设置窗口跟随当前生效的主题")
+                          "深色 / 浅色固定；自动跟随 Windows 的浅色/深色设置，"
+                          "系统切换时界面立即跟着变，设置窗口跟随当前生效的主题")
+        # _pill_select 的 options 是 (按钮文案, 取值)，THEME_LABELS 是 (取值, 文案)
         self._theme_wrap, self._theme_group = self._pill_select(
-            (("自动", "auto"), ("深色", "dark"), ("浅色", "light")),
-            self.theme0)
+            tuple((label, mode) for mode, label in THEME_LABELS), self.theme0)
         right.addWidget(self._theme_wrap)
         right.addStretch(1)
 
@@ -1082,9 +1081,7 @@ class SettingsDialog(QDialog):
             scale = 1.0
         if scale not in SCALE_STEPS:      # 脏值收敛到最近的合法档位
             scale = min(SCALE_STEPS, key=lambda s: abs(s - scale))
-        theme = self._pill_value(self._theme_group) or "auto"
-        if theme not in ("auto", "dark", "light"):
-            theme = "auto"
+        theme = norm_theme_mode(self._pill_value(self._theme_group) or self.theme0)
         warn = int(self.warn_spin.value())
         crit = int(self.crit_spin.value())
         if warn >= crit:  # 保证黄 < 红
