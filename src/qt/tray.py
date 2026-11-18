@@ -12,6 +12,7 @@ from PySide6.QtGui import QActionGroup
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from core.config import APP_NAME
+from core.providers_deepseek import fmt_balance_text
 
 from . import detail_panel as dp
 from .theme import THEME_LABELS, norm_theme_mode
@@ -182,12 +183,12 @@ class TrayIcon(QSystemTrayIcon):
             tip += "\n火山：" + w.errors["volcano"][:30]
         dd = w.data.get("deepseek")
         if dd and dd.get("ok"):
-            # 与详情面板同一口径：多币种逐条列出、不做合计，标签带币种代码；
-            # 本轮刷新失败时保留的旧余额标「非实时」，避免被当成当前余额
-            tag = "（非实时）" if dd.get("stale") else ""
+            # 与详情面板同一口径：多币种逐条列出、不做合计，
+            # 币种跟在值后，赠金 > 0 才带括号；刷新失败的旧值标「非实时」
             for b in (dd.get("balances") or []):
-                tip += "\nDeepSeek 余额 %s %.2f %s" % (
-                    b.get("currency") or "—", b.get("total") or 0.0, tag)
+                tip += "\nDeepSeek 余额 " + fmt_balance_text(
+                    b.get("total"), b.get("currency"), b.get("granted"),
+                    bool(dd.get("stale")))
             if (dd.get("balances") or [{}])[0].get("is_available") is False:
                 tip += "\nDeepSeek 账户暂不可用（可能欠费或未充值）"
         elif w.errors.get("deepseek"):

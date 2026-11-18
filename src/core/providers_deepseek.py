@@ -47,6 +47,20 @@ def _to_money(v):
         return None
 
 
+def fmt_balance_text(total, currency, granted=None, stale=False):
+    """余额行文案：总额 + 币种，赠金大于 0 时才补「（赠金 x）」。
+
+    多币种逐行调用、各自带币种代码，不做合计；充值额可由总额与赠金
+    相减得到，不再常驻展示。stale=True 时在末尾追加「非实时」标记。"""
+    txt = "%.2f %s" % (total if isinstance(total, (int, float)) else 0.0,
+                       currency or "—")
+    if isinstance(granted, (int, float)) and granted > 0:
+        txt += "（赠金 %.2f）" % granted
+    if stale:
+        txt += " · 非实时"
+    return txt
+
+
 def key_fingerprint(api_key):
     """API Key 的短指纹（sha256 前 8 位十六进制），仅用于余额账本分段。
 

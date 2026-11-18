@@ -567,5 +567,38 @@ class TestUsageExperimental(unittest.TestCase):
         self.assertNotIn(KEY, json.dumps(result, ensure_ascii=False))
 
 
+class TestFmtBalanceText(unittest.TestCase):
+    """余额行文案：只给总额+币种，赠金 >0 才带括号，状态标记在末尾。"""
+
+    def test_granted_zero_hidden(self):
+        self.assertEqual(dsk.fmt_balance_text(50.84, "CNY", 0.0),
+                         "50.84 CNY")
+
+    def test_granted_positive(self):
+        self.assertEqual(dsk.fmt_balance_text(50.84, "CNY", 6.0),
+                         "50.84 CNY（赠金 6.00）")
+
+    def test_granted_missing_or_invalid(self):
+        for granted in (None, "6.00"):
+            self.assertEqual(dsk.fmt_balance_text(50.84, "CNY", granted),
+                             "50.84 CNY")
+
+    def test_multi_currency_rows_not_summed(self):
+        rows = [("CNY", 50.84, 0.0), ("USD", 10.5, 1.25)]
+        out = [dsk.fmt_balance_text(t, c, g) for c, t, g in rows]
+        self.assertEqual(out, ["50.84 CNY", "10.50 USD（赠金 1.25）"])
+
+    def test_small_amounts_two_decimals(self):
+        self.assertEqual(dsk.fmt_balance_text(0.05, "CNY", 0.01),
+                         "0.05 CNY（赠金 0.01）")
+
+    def test_missing_total_shows_zero(self):
+        self.assertEqual(dsk.fmt_balance_text(None, "CNY"), "0.00 CNY")
+
+    def test_stale_marker_last(self):
+        self.assertEqual(dsk.fmt_balance_text(50.84, "CNY", 6.0, stale=True),
+                         "50.84 CNY（赠金 6.00） · 非实时")
+
+
 if __name__ == "__main__":
     unittest.main()

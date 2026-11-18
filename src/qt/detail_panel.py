@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
 
 from core.burn_predict import fmt_reset_info, predict_text
 from core.config import _to_bool, _to_int
-from core.providers_deepseek import balance_spent
+from core.providers_deepseek import balance_spent, fmt_balance_text
 
 from .theme import C_ACCENT_D, C_ACCENT_V, C_ACCENT_Z
 
@@ -216,25 +216,13 @@ def layout_blocks(data, errors, cfg, hist, k):
         if dd.get("ok"):
             stat_h = line_h + int(6 * k)
             stale = bool(dd.get("stale"))
-            # 多币种逐条列出（不同币种分行，不做合计）。标签恒带币种代码：
-            # 官网只展示账户币种的「总余额」，不带币种会与充值/赠送余额混淆
+            # 多币种逐条列出（不同币种分行，不做合计）；币种只出现在值里，
+            # 标签统一为「总余额」，赠金只在大于 0 时补括号说明
             for b in dd.get("balances") or []:
-                cur = b.get("currency") or "—"
-                txt = "%.2f %s" % (b.get("total") or 0.0, cur)
-                # 总余额 = 充值 + 赠送：官网分栏展示，这里一并给出便于核对
-                parts = []
-                topped = b.get("topped_up")
-                granted = b.get("granted")
-                if isinstance(topped, (int, float)):
-                    parts.append("充 %.2f" % topped)
-                if isinstance(granted, (int, float)):
-                    parts.append("赠 %.2f" % granted)
-                if parts:
-                    txt += " · " + " · ".join(parts)
-                if stale:
-                    txt += " · 非实时"
+                txt = fmt_balance_text(b.get("total"), b.get("currency"),
+                                       b.get("granted"), stale)
                 blocks.append({"t": "stat", "strong": True,
-                               "label": "总余额（%s）" % cur,
+                               "label": "总余额",
                                "text": txt, "h": stat_h})
             if (dd.get("balances") or [{}])[0].get("is_available") is False:
                 blocks.append({"t": "stat", "strong": True,
