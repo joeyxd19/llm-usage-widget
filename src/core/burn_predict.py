@@ -130,10 +130,16 @@ def fmt_reset_info(value, now=None):
         cd = "即将重置"
     elif sec < 3600:
         cd = "%d 分钟后重置" % max(1, sec // 60)
-    elif sec < 48 * 3600:
+    elif sec <= 24 * 3600:
+        # 24 小时及以内：小时 + 两位分钟（含 24 小时整点）
         cd = "%d 小时 %02d 分后重置" % (sec // 3600, (sec % 3600) // 60)
     elif sec < 8 * 86400:
-        cd = "%d 天 %d 小时后重置" % (sec // 86400, (sec % 86400) // 3600)
+        # 超过 24 小时按天向下取整；小时部分为 0 时省略，
+        # 如 24 小时 30 分显示「1 天后重置」而不是「1 天 0 小时后重置」
+        days = int(sec // 86400)
+        hours = int((sec % 86400) // 3600)
+        cd = ("%d 天后重置" % days if hours == 0
+              else "%d 天 %d 小时后重置" % (days, hours))
     else:
         cd = ""
     if dt.date() == now.date():

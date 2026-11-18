@@ -37,6 +37,11 @@ def test_fmt_duration():
     assert bp.fmt_duration(-3) == "1 分钟"   # 负值收敛到 1 分钟
 
 
+def _cd(delta, now):
+    """按 now+delta 调 fmt_reset_info，只取倒计时文案。"""
+    return bp.fmt_reset_info((now + delta).timestamp(), now=now)[0]
+
+
 def test_fmt_reset_info():
     now = datetime.datetime(2026, 3, 15, 12, 0, 0)
     # 30 分钟后重置
@@ -56,6 +61,32 @@ def test_fmt_reset_info():
     # 无效时间
     assert bp.fmt_reset_info(None) == ("", "")
     assert bp.fmt_reset_info("abc") == ("", "")
+
+
+def test_fmt_reset_countdown_boundaries():
+    """三段式：<1h 分钟；≤24h 小时+两位分钟；24h–8d 天+小时；≥8d 不显示。"""
+    now = datetime.datetime(2026, 3, 15, 12, 0, 0)
+    D = datetime.timedelta
+    assert _cd(D(seconds=0), now) == "即将重置"
+    assert _cd(D(minutes=59), now) == "59 分钟后重置"
+    assert _cd(D(hours=1), now) == "1 小时 00 分后重置"
+    assert _cd(D(hours=5, minutes=30), now) == "5 小时 30 分后重置"
+    assert _cd(D(hours=23, minutes=59), now) == "23 小时 59 分后重置"
+    # 24 小时整点仍属小时档
+    assert _cd(D(hours=24), now) == "24 小时 00 分后重置"
+    # 超过 24 小时进天档；小时为 0 时省略「0 小时」
+    assert _cd(D(hours=24, minutes=30), now) == "1 天后重置"
+    assert _cd(D(hours=24, minutes=1), now) == "1 天后重置"
+    assert _cd(D(hours=25), now) == "1 天 1 小时后重置"
+    assert _cd(D(hours=47, minutes=59), now) == "1 天 23 小时后重置"
+    assert _cd(D(hours=48), now) == "2 天后重置"
+    assert _cd(D(hours=84), now) == "3 天 12 小时后重置"
+    assert _cd(D(days=7), now) == "7 天后重置"
+    # 8 天及以上不显示倒计时，绝对时间仍照常返回
+    assert _cd(D(days=8), now) == ""
+    cd, abs_s = bp.fmt_reset_info((now + D(days=8)).timestamp(), now=now)
+    assert cd == ""
+    assert abs_s == "3月23日（周一）12:00"
 
 
 # ---------------- 窗口截断 ----------------
